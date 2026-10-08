@@ -161,7 +161,18 @@ async function sincronizarFtp(cfg) {
       if (diagnostico.respostaCrua === undefined) diagnostico.respostaCrua = String(texto).slice(0, 1200);
       return parseOriginal(texto);
     };
-    await listarClaxFtp(cliente, raiz, 0, arquivos);
+    // Usuários de FTP "presos" numa pasta enxergam outro caminho que o FileZilla.
+    // Se o caminho completo não existir, tenta versões mais curtas: /www/resultados/AoVivo -> /resultados/AoVivo -> /AoVivo -> /
+    const partes = raiz.split('/').filter(Boolean);
+    const candidatos = [];
+    for (let i = 0; i <= partes.length; i++) candidatos.push('/' + partes.slice(i).join('/'));
+    let pastaUsada = null;
+    for (const c of candidatos) {
+      try { await cliente.cd(c); pastaUsada = c; break; } catch (e) { /* tenta a próxima */ }
+    }
+    if (!pastaUsada) throw new Error(`Nenhum destes caminhos existe para esse usuário de FTP: ${candidatos.join(', ')}`);
+    diagnostico.pastaUsada = pastaUsada;
+    await listarClaxFtp(cliente, pastaUsada, 0, arquivos);
     const vistos = new Set();
     for (const { caminho, chave } of arquivos) {
       vistos.add(caminho);
