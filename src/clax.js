@@ -33,6 +33,18 @@ function slugify(txt) {
 
 const limpa = (s) => String(s || '').replace(/\s+/g, ' ').trim();
 
+// Data do evento: usa dt1 ("2026-09-13"); se estiver vazio, usa o número de dias do
+// campo "date" (mesmo formato do Excel, ex.: 46278 = 13/09/2026)
+function dataDoEvento(raiz) {
+  if (/^\d{4}-\d{2}-\d{2}/.test(raiz.dt1 || '')) return raiz.dt1.slice(0, 10);
+  const dias = parseFloat(String(raiz.date || '').replace(',', '.'));
+  if (dias > 30000 && dias < 80000) {
+    const d = new Date(Date.UTC(1899, 11, 30) + Math.floor(dias) * 86400000);
+    return d.toISOString().slice(0, 10);
+  }
+  return '';
+}
+
 /**
  * @param {string} xml      conteúdo do .clax
  * @param {object} opcoes   { arquivo, config }  config = dados extras do eventos.json
@@ -107,7 +119,7 @@ function lerClax(xml, { arquivo = '', config = {} } = {}) {
   }
 
   const nome = limpa(raiz.nom) || arquivo.replace(/\.clax$/i, '');
-  const data = raiz.dt1 || '';
+  const data = dataDoEvento(raiz);
   const resumo = {
     slug: config.slug || slugify(nome),
     nome: config.nome || nome,

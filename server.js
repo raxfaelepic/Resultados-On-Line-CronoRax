@@ -25,7 +25,7 @@ app.get('/api/eventos/:slug', (req, res) => {
   const ev = buscarEvento(req.params.slug);
   if (!ev) return res.status(404).json({ erro: 'Evento não encontrado' });
   res.set('Cache-Control', 'public, max-age=30');
-  res.json(ev);
+  res.type('json').send(ev);
 });
 
 app.get('/api/status', (_req, res) => res.json(status()));

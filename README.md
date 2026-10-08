@@ -44,7 +44,12 @@ usando o **nome do arquivo** como chave (ou o caminho completo, ex.: `/2026/out/
 }
 ```
 
-- `ocultar: true` tira o evento da página (bom para provas de teste).
+- `ocultar: true` tira o evento da página.
+- Arquivos com **backup, bkp, old, teste, test, copia, simulado** no nome ou na pasta ficam fora automaticamente.
+  Para mudar essa lista: `"padrao": { "ignorarArquivos": ["backup", "bkp", ...] }`.
+  Um arquivo cadastrado no `eventos.json` sempre entra, mesmo com essas palavras.
+- Se o mesmo evento estiver em vários arquivos (reexportações), a página mostra só o salvo por último no Wiclax.
+- Eventos sem inscritos ou sem percurso não aparecem.
 - `ocultarPercursos` esconde percursos como "EM ANALISE".
 - `km` permite corrigir a distância de um percurso, se o nome não tiver o número: `"km": { "Desafio": 7.5 }`.
 

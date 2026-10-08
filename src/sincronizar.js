@@ -37,26 +37,69 @@ function hojeSaoPaulo() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }); // AAAA-MM-DD
 }
 
+// Arquivos que nunca entram na página (backups, cópias, testes).
+// Dá pra trocar a lista no eventos.json, em "padrao": { "ignorarArquivos": [...] }
+const IGNORAR_PADRAO = ['backup', 'bkp', 'old', 'teste', 'test', 'copia', 'cópia', 'simulado'];
+
+function deveIgnorar(cfg, caminho, nomeEvento) {
+  const termos = ((cfg.padrao && cfg.padrao.ignorarArquivos) || IGNORAR_PADRAO).map((t) => t.toLowerCase());
+  const lista = cfg.eventos || {};
+  if (lista[caminho] || lista[path.posix.basename(caminho)]) return false; // cadastrado no eventos.json: sempre entra
+  const alvo = `${caminho} ${nomeEvento || ''}`.toLowerCase();
+  return termos.some((t) => new RegExp(`(^|[^a-z])${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(alvo));
+}
+
+const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+function dataPelaPasta(caminho) {
+  const m = /\/(20\d\d)\/([a-zç]{3})/i.exec(caminho);
+  if (!m) return '';
+  const i = MESES.indexOf(m[2].toLowerCase().slice(0, 3));
+  return i < 0 ? '' : `${m[1]}-${String(i + 1).padStart(2, '0')}-01`;
+}
+
 function processar(caminho, conteudo, chave, cfg) {
   const config = configDoArquivo(cfg, caminho);
-  if (config.ocultar) { eventos.delete(caminho); return; }
+  if (config.ocultar || deveIgnorar(cfg, caminho)) { eventos.set(caminho, { chave, oculto: true }); return; }
   const { resumo, detalhe } = lerClax(conteudo, { arquivo: path.posix.basename(caminho), config });
-  // dois arquivos com o mesmo nome de evento: o segundo ganha a data no endereço
-  for (const [outro, e] of eventos) {
-    if (outro !== caminho && e.resumo.slug === resumo.slug) {
-      resumo.slug = detalhe.slug = `${resumo.slug}-${resumo.data || 'b'}`;
-      break;
-    }
-  }
+  if (!resumo.data) resumo.data = detalhe.data = dataPelaPasta(caminho);
   resumo.pasta = detalhe.pasta = path.posix.dirname(caminho);
-  eventos.set(caminho, { chave, resumo, detalhe });
+  const oculto = deveIgnorar(cfg, caminho, resumo.nome) || !resumo.inscritos || !resumo.percursos.length;
+  // o detalhe fica guardado já em texto (JSON), que ocupa bem menos memória
+  eventos.set(caminho, { chave, resumo, detalhe: oculto ? null : JSON.stringify(detalhe), oculto });
+}
+
+// Monta a lista pública: some com os ocultos e, quando o mesmo evento aparece em
+// mais de um arquivo (reexportações), fica só o salvo por último no Wiclax.
+let publicos = [];
+let porSlug = new Map();
+function montarIndice() {
+  const melhores = new Map(); // slug + data -> item
+  for (const item of eventos.values()) {
+    if (item.oculto) continue;
+    const k = `${item.resumo.slugBase || item.resumo.slug}|${item.resumo.data}`;
+    const atual = melhores.get(k);
+    if (!atual || (item.resumo.atualizado || '') > (atual.resumo.atualizado || '')) melhores.set(k, item);
+  }
+  const lista = [...melhores.values()].sort((a, b) => b.resumo.data.localeCompare(a.resumo.data));
+  porSlug = new Map();
+  for (const item of lista) {
+    const base = item.resumo.slugBase || item.resumo.slug;
+    item.resumo.slugBase = base;
+    let slug = base;
+    if (porSlug.has(slug)) slug = `${base}-${item.resumo.data || 'b'}`;
+    let n = 2;
+    while (porSlug.has(slug)) slug = `${base}-${n++}`;
+    item.resumo.slug = slug;
+    porSlug.set(slug, item);
+  }
+  publicos = lista.map((i) => i.resumo);
 }
 
 function precisaRecarregar(caminho, chave) {
   const atual = eventos.get(caminho);
   if (!atual) return true;
   if (atual.chave !== chave) return true;
-  return atual.resumo.data === hojeSaoPaulo();
+  return !!atual.resumo && atual.resumo.data === hojeSaoPaulo();
 }
 
 function removerSumidos(vistos) {
@@ -94,6 +137,7 @@ async function sincronizarFtp(cfg) {
     const vistos = new Set();
     for (const { caminho, chave } of arquivos) {
       vistos.add(caminho);
+      if (deveIgnorar(cfg, caminho)) { eventos.set(caminho, { chave, oculto: true }); continue; }
       if (!precisaRecarregar(caminho, chave)) continue;
       const pedacos = [];
       const destino = new Writable({ write(c, _e, cb) { pedacos.push(c); cb(); } });
@@ -127,6 +171,7 @@ async function sincronizarPasta(cfg) {
   const vistos = new Set();
   for (const { caminho, chave } of arquivos) {
     vistos.add(caminho);
+    if (deveIgnorar(cfg, caminho)) { eventos.set(caminho, { chave, oculto: true }); continue; }
     if (!precisaRecarregar(caminho, chave)) continue;
     try {
       processar(caminho, fs.readFileSync(path.join(base, caminho), 'utf8'), chave, cfg);
@@ -144,6 +189,7 @@ async function sincronizar() {
   try {
     if (process.env.CLAX_PASTA) await sincronizarPasta(cfg);
     else await sincronizarFtp(cfg);
+    montarIndice();
     ultimaSincronizacao = new Date().toISOString();
     ultimoErro = null;
   } catch (e) {
@@ -155,18 +201,23 @@ async function sincronizar() {
 }
 
 function listarEventos() {
-  return [...eventos.values()].map((e) => e.resumo).sort((a, b) => b.data.localeCompare(a.data));
+  return publicos;
 }
 
+// devolve o JSON do evento já em texto (ou null)
 function buscarEvento(slug) {
-  for (const e of eventos.values()) if (e.resumo.slug === slug) return e.detalhe;
-  return null;
+  const item = porSlug.get(slug);
+  if (!item) return null;
+  // o slug pode ter ganhado sufixo; ajusta no texto guardado
+  return item.detalhe.replace(/"slug":"[^"]*"/, `"slug":${JSON.stringify(slug)}`);
 }
 
 function status() {
+  const todos = [...eventos.entries()];
   return {
-    eventos: eventos.size,
-    arquivos: [...eventos.keys()],
+    eventosNaPagina: publicos.length,
+    arquivosLidos: todos.length,
+    arquivosOcultos: todos.filter(([, e]) => e.oculto).map(([c]) => c),
     ultimaSincronizacao,
     ultimoErro,
     origem: process.env.CLAX_PASTA ? 'pasta' : 'ftp',
