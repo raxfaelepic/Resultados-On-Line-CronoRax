@@ -94,7 +94,7 @@ input[type=search]{min-width:min(280px,100%)}
 .pod-row{display:grid;grid-template-columns:34px 1fr auto;gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--line)}
 .pod-row:first-of-type{border-top:0}
 .medal{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-family:var(--display);font-weight:800;color:#fff;font-size:16px}
-.m1{background:var(--gold)}.m2{background:var(--silver)}.m3{background:var(--bronze)}
+.m1{background:var(--gold)}.m2{background:var(--silver)}.m3{background:var(--bronze)}.m4{background:var(--muted)}
 .pod-name{font-weight:600;line-height:1.2;min-width:0;overflow-wrap:anywhere}
 .pod-sub{color:var(--muted);font-size:12.5px}
 .pod-time{text-align:right;font-family:var(--mono);font-weight:600;font-variant-numeric:tabular-nums}
@@ -239,6 +239,8 @@ async function renderList(){
 /* ---------- tela: evento ---------- */
 const kmDe=(ev,nome)=>(ev.percursos.find(p=>p.nome===nome)||{}).km;
 const catNome=(ev,a)=>a.ca?(ev.categorias[a.ca]||a.ca):"";
+// tempo usado na classificação geral (bruto pela regra da federação)
+const tGeral=(ev,a)=>ev.geralPor==="liquido"||a.tb==null?a.t:a.tb;
 
 function renderEvent(ev){
   const d=dObj(ev.data), aoVivo=ev.data===hoje();
@@ -259,12 +261,12 @@ function renderEvent(ev){
     html+=`<section><div class="sec-head"><h2>Pódio</h2>
       <div class="tabs" role="group" aria-label="Percurso do pódio">${nomes.map(x=>`<button data-pd="${esc(x)}" aria-pressed="${x===state.podDist}">${esc(x)}</button>`).join("")}</div></div>
       <div class="podiums">${["M","F"].map(s=>{
-        const top=ev.atletas.filter(a=>a.p===state.podDist&&a.x===s&&a.st==="ok"&&a.sp<=3).sort((a,b)=>a.sp-b.sp);
+        const top=ev.atletas.filter(a=>a.p===state.podDist&&a.x===s&&a.st==="ok"&&a.sp<=(ev.podioGeral||3)).sort((a,b)=>a.sp-b.sp);
         const km=kmDe(ev,state.podDist);
         return`<div class="podium"><h3><span class="sym ${s==="F"?"f":""}">${s==="F"?"♀":"♂"}</span>Geral ${s==="F"?"Feminino":"Masculino"}</h3>
-        ${top.length?top.map((a,i)=>`<div class="pod-row" data-bib="${a.d}" style="cursor:pointer"><span class="medal m${i+1}">${i+1}</span>
+        ${top.length?top.map((a,i)=>`<div class="pod-row" data-bib="${a.d}" style="cursor:pointer"><span class="medal m${Math.min(i+1,4)}">${i+1}</span>
           <div class="pod-name">${esc(a.n)}<div class="pod-sub">Peito ${a.d}${a.c?" · "+esc(a.c):""}</div></div>
-          <div class="pod-time">${fmtT(a.t)}<small>${fmtP(a.t,km)}</small></div></div>`).join(""):`<div class="pod-sub">Ainda sem chegadas.</div>`}</div>`}).join("")}</div>
+          <div class="pod-time">${fmtT(tGeral(ev,a))}<small>${fmtP(tGeral(ev,a),km)}</small></div></div>`).join(""):`<div class="pod-sub">Ainda sem chegadas.</div>`}</div>`}).join("")}</div>
     </section>`;
     html+=statsBlock(ev,state.podDist);
   }
@@ -280,6 +282,7 @@ function statsBlock(ev,nome){
   const fin=ev.atletas.filter(a=>a.p===nome&&a.st==="ok").map(a=>a.t).sort((a,b)=>a-b);
   if(!fin.length)return"";
   const avg=Math.round(fin.reduce((s,x)=>s+x,0)/fin.length);
+  const melhor=Math.min(...ev.atletas.filter(a=>a.p===nome&&a.st==="ok").map(a=>tGeral(ev,a)));
   const med=fin.length%2?fin[(fin.length-1)/2]:Math.round((fin[fin.length/2-1]+fin[fin.length/2])/2);
   // histograma: ignora os 2% extremos de cada lado para a escala não esticar
   const a0=fin[Math.floor(fin.length*.01)], a1=fin[Math.min(fin.length-1,Math.ceil(fin.length*.99)-1)];
@@ -301,12 +304,12 @@ function statsBlock(ev,nome){
   return`<section><div class="sec-head"><h2>A prova em números · ${esc(nome)}</h2></div>
    <div class="stats">
     <div class="stat"><div class="k">Concluíram</div><div class="v">${n(fin.length)}</div></div>
-    <div class="stat"><div class="k">Melhor tempo</div><div class="v">${fmtT(fin[0])}</div><div class="n">${fmtP(fin[0],km)}</div></div>
-    <div class="stat"><div class="k">Tempo médio</div><div class="v">${fmtT(avg)}</div><div class="n">mediana ${fmtT(med)}</div></div>
+    <div class="stat"><div class="k">Melhor tempo</div><div class="v">${fmtT(melhor)}</div><div class="n">${ev.geralPor==="liquido"?fmtP(melhor,km):"tempo bruto"}</div></div>
+    <div class="stat"><div class="k">Tempo médio líquido</div><div class="v">${fmtT(avg)}</div><div class="n">mediana ${fmtT(med)}</div></div>
     ${km?`<div class="stat"><div class="k">Ritmo médio</div><div class="v">${fmtP(avg,km).replace("/km","")}</div><div class="n">por km</div></div>
     <div class="stat"><div class="k">Velocidade média</div><div class="v">${kmh(avg,km)}</div><div class="n">km/h</div></div>`:""}
    </div>
-   <div class="hist"><div class="k">Distribuição dos tempos de chegada</div>${svg}</div></section>`;
+   <div class="hist"><div class="k">Distribuição dos tempos líquidos</div>${svg}</div></section>`;
 }
 
 function renderTable(ev){
@@ -329,15 +332,16 @@ function renderTable(ev){
     <div class="field"><label for="f-cat">Categoria</label><select id="f-cat"><option value="">Todas as categorias</option>${ev.ordemCategorias.map(c=>`<option value="${esc(c)}" ${state.cat===c?"selected":""}>${esc(ev.categorias[c]||c)}</option>`).join("")}</select></div>
    </div>
    ${slice.length?`<div class="table-box"><table>
-    <thead><tr>${res?"<th>Pos</th>":""}<th>Atleta</th><th>Peito</th><th>Percurso</th><th class="hide-sm">Categoria</th>${res?'<th>Tempo</th><th class="hide-sm">Ritmo</th>':""}</tr></thead>
+    <thead><tr>${res?"<th>Pos</th>":""}<th>Atleta</th><th>Peito</th><th>Percurso</th><th class="hide-sm">Categoria</th>${res?`<th>${ev.geralPor==="liquido"?"Tempo":"Bruto"}</th>${ev.geralPor==="liquido"?"":'<th class="hide-sm">Líquido</th>'}<th class="hide-sm">Ritmo</th>`:""}</tr></thead>
     <tbody>${slice.map(a=>{const ok=a.st==="ok";return`<tr data-bib="${a.d}">
       ${res?`<td class="pos">${ok?a.pos:'<span class="dnf">—</span>'}</td>`:""}
-      <td class="ath">${a.x==="F"?'<span class="f">♀ </span>':""}${esc(a.n)}${res&&ok&&a.sp<=3?`<span class="badge">${a.sp}º ${a.x}</span>`:""}<small>${a.c?esc(a.c):"&nbsp;"}</small></td>
+      <td class="ath">${a.x==="F"?'<span class="f">♀ </span>':""}${esc(a.n)}${res&&ok&&a.sp<=(ev.podioGeral||3)?`<span class="badge">${a.sp}º ${a.x}</span>`:""}<small>${a.c?esc(a.c):"&nbsp;"}</small></td>
       <td class="bib">Nº ${a.d}</td>
       <td>${esc(a.p)}</td>
       <td class="hide-sm"><div class="cat">${esc(catNome(ev,a))}</div>${res&&ok&&a.cp?`<div class="catpos">${a.cp}º na categoria</div>`:""}</td>
-      ${res?`<td class="time">${ok?fmtT(a.t):'<span class="dnf">DESCLASSIFICADO</span>'}</td><td class="pace hide-sm">${ok?fmtP(a.t,kmDe(ev,a.p)):""}</td>`:""}
+      ${res?`<td class="time">${ok?fmtT(tGeral(ev,a)):'<span class="dnf">DESCLASSIFICADO</span>'}</td>${ev.geralPor==="liquido"?"":`<td class="pace hide-sm">${ok?fmtT(a.t):""}</td>`}<td class="pace hide-sm">${ok?fmtP(a.t,kmDe(ev,a.p)):""}</td>`:""}
     </tr>`}).join("")}</tbody></table></div>
+    ${res&&ev.geralPor!=="liquido"?`<p class="count" style="margin:8px 2px 0">Geral pelo tempo bruto (${ev.podioGeral||5} primeiros de cada sexo). Faixas etárias pelo tempo líquido.</p>`:""}
     <div class="pager"><button id="pg-prev" ${state.page<=1?"disabled":""}>← Anterior</button><span>Página ${state.page} de ${pages}</span><button id="pg-next" ${state.page>=pages?"disabled":""}>Próxima →</button></div>`
    :`<div class="empty">${rows.length||state.q||state.dist||state.sex||state.cat?"Nenhum atleta encontrado com esses filtros.":res?"Ainda não há resultados. Veja a lista de largada.":"Nenhum atleta inscrito."}</div>`}`;
   document.getElementById("f-q").oninput=e=>{state.q=e.target.value;state.page=1;renderTable(ev);const el=document.getElementById("f-q");el.focus();el.setSelectionRange(el.value.length,el.value.length)};
@@ -361,9 +365,9 @@ function openSheet(ev,bib){
     <div class="sheet-top"><button class="close" id="sh-x" aria-label="Fechar">×</button>
       <div class="bibbig">PEITO ${a.d}</div><h3>${esc(a.n)}</h3>
       <p>${[a.p,catNome(ev,a),a.c].filter(Boolean).map(esc).join(" · ")}</p></div>
-    <div class="sheet-time"><div class="t" style="${ok?"":"font-size:26px"}">${tempo}</div>
-      ${ok?`<div class="p">Tempo líquido${km?` · ritmo ${fmtP(a.t,km)} · ${kmh(a.t,km)} km/h`:""}</div>
-      ${a.tb!=null&&a.tb!==a.t?`<div class="sheet-sub"><span>Tempo bruto <b>${fmtT(a.tb)}</b></span></div>`:""}`:""}</div>
+    <div class="sheet-time"><div class="t" style="${ok?"":"font-size:26px"}">${ok?fmtT(tGeral(ev,a)):tempo}</div>
+      ${ok?`<div class="p">${ev.geralPor==="liquido"?"Tempo":"Tempo bruto"}${km?` · ritmo ${fmtP(a.t,km)} · ${kmh(a.t,km)} km/h`:""}</div>
+      ${ev.geralPor!=="liquido"&&a.tb!=null?`<div class="sheet-sub"><span>Tempo líquido <b>${fmtT(a.t)}</b></span></div>`:""}`:""}</div>
     ${ok?`<div class="ranks"><div><b>${a.pos}º</b><span>Geral de ${n(fin.length)}</span></div><div><b>${a.sp}º</b><span>${a.x==="F"?"Fem":"Masc"} de ${n(nSexo)}</span></div>${a.cp?`<div><b>${a.cp}º</b><span>Categ. de ${n(nCat)}</span></div>`:"<div><b>—</b><span>Categoria</span></div>"}</div>`:""}
   </div>`;
   sheet.hidden=false;
