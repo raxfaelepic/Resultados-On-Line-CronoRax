@@ -19,6 +19,13 @@ function tempoEmSegundos(txt) {
   return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
 }
 
+// tempo de volta "16:39" ou "1:01:34" -> segundos
+function duracao(txt) {
+  const p = String(txt || '').trim().split(':').map(Number);
+  if (!p.length || p.some(isNaN)) return null;
+  return p.reduce((acc, v) => acc * 60 + v, 0);
+}
+
 // "10 KM", "5 KM PCD", "21,1K" -> 10 / 5 / 21.1
 function kmDoNome(nome) {
   const m = /(\d+(?:[.,]\d+)?)\s*K/i.exec(nome || '');
@@ -131,10 +138,22 @@ function lerClax(xml, { arquivo = '', config = {} } = {}) {
     });
   }
 
+  // prova de voltas / por tempo (ex.: 24 horas): o Wiclax grava voltas (to) e distância (ds)
+  const resultados = (etapa.Resultats && etapa.Resultats.R) || [];
+  const provaDeVoltas = etapa.aTours === '1' || resultados.some((r) => r.to != null && r.ds != null);
+  const distanciaVolta = Number(etapa.distanceTour) || null; // metros
+
   // resultados
-  for (const r of (etapa.Resultats && etapa.Resultats.R) || []) {
+  for (const r of resultados) {
     const a = atletas.get(String(r.d));
     if (!a) continue;
+    if (provaDeVoltas) {
+      a.v = Number(r.to) || 0;                                   // voltas
+      a.m = Number(r.ds) || (distanciaVolta ? a.v * distanciaVolta : 0); // metros percorridos
+      a.mv = tempoEmSegundos(r.mt);                             // melhor volta
+      const voltas = String(r.tc || '').split(';').map(duracao).filter((x) => x != null);
+      if (voltas.length) a.vt = voltas;                         // tempo de cada volta
+    }
     const t = tempoEmSegundos(r.t);
     if (t != null) {
       a.t = t;
@@ -142,6 +161,9 @@ function lerClax(xml, { arquivo = '', config = {} } = {}) {
       a.st = 'ok';
     } else if (/desq|dsq/i.test(r.t || '') || r.tr === '5') {
       a.st = 'dsq';
+    } else if (/termin|abandon|dnf/i.test(r.t || '') || r.tr === '4') {
+      a.st = 'dnf';
+      if (provaDeVoltas && a.vt) a.t = a.vt.reduce((x, y) => x + y, 0);
     }
   }
 
@@ -153,6 +175,8 @@ function lerClax(xml, { arquivo = '', config = {} } = {}) {
   const geralPorBruto = (config.classificacaoGeral || 'bruto') !== 'liquido';
   const podioGeral = Number(config.podioGeral || 5);
   const bruto = (a) => (geralPorBruto && a.tb != null ? a.tb : a.t);
+  // prova de voltas: quem andou mais vence; empate -> quem fez em menos tempo
+  const ordemVoltas = (a, b) => (b.m || 0) - (a.m || 0) || (b.v || 0) - (a.v || 0) || a.t - b.t || a.d - b.d;
   const anoProva = Number((dataDoEvento(raiz) || '').slice(0, 4)) || new Date().getFullYear();
   const faixaEtaria = (a) => {
     if (!a._ano) return '';
@@ -165,7 +189,7 @@ function lerClax(xml, { arquivo = '', config = {} } = {}) {
   for (const { nome } of percursos) {
     const chegaram = lista.filter((a) => a.p === nome && a.st === 'ok');
     const porSexo = {};
-    [...chegaram].sort((a, b) => bruto(a) - bruto(b) || a.t - b.t || a.d - b.d).forEach((a, i) => {
+    [...chegaram].sort(provaDeVoltas ? ordemVoltas : (a, b) => bruto(a) - bruto(b) || a.t - b.t || a.d - b.d).forEach((a, i) => {
       a.pos = i + 1;
       porSexo[a.x] = (porSexo[a.x] || 0) + 1; a.sp = porSexo[a.x];
       if (a.x && a.sp <= podioGeral) a.ca = geralDe[a.x];                // top 5 -> geral
@@ -176,7 +200,7 @@ function lerClax(xml, { arquivo = '', config = {} } = {}) {
     for (const a of chegaram) if (a.ca) (porCat[a.ca] = porCat[a.ca] || []).push(a);
     for (const [abr, grupo] of Object.entries(porCat)) {
       const tempo = ehCatGeral(abr) ? bruto : (a) => a.t;
-      grupo.sort((a, b) => tempo(a) - tempo(b) || a.d - b.d).forEach((a, i) => { a.cp = i + 1; });
+      grupo.sort(provaDeVoltas ? ordemVoltas : (a, b) => tempo(a) - tempo(b) || a.d - b.d).forEach((a, i) => { a.cp = i + 1; });
     }
   }
   // quem não terminou e está como GERAL no Wiclax volta para a faixa etária
@@ -191,12 +215,14 @@ function lerClax(xml, { arquivo = '', config = {} } = {}) {
     nome: config.nome || nome,
     data: config.data || data,
     cidade: config.cidade || '',
-    tipo: config.tipo || 'Corrida de rua',
+    tipo: config.tipo || (provaDeVoltas ? 'Prova de voltas' : 'Corrida de rua'),
     organizador: limpa(raiz.organisateur),
     percursos,
     inscritos: lista.length,
     concluintes: lista.filter((a) => a.st === 'ok').length,
-    geralPor: geralPorBruto ? 'bruto' : 'liquido',
+    geralPor: provaDeVoltas ? 'voltas' : geralPorBruto ? 'bruto' : 'liquido',
+    provaDeVoltas,
+    distanciaVolta,
     podioGeral,
     atualizado: raiz.derSvg || '',
     arquivo,
