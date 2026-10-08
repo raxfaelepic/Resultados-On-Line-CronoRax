@@ -112,7 +112,11 @@ function removerSumidos(vistos) {
 let diagnostico = {};
 async function listarClaxFtp(cliente, pasta, nivel, saida) {
   let itens;
-  try { itens = await cliente.list(pasta); } catch (e) {
+  try {
+    // entra na pasta e lista "ela mesma" (alguns servidores erram ao listar passando o caminho)
+    await cliente.cd(pasta);
+    itens = await cliente.list();
+  } catch (e) {
     console.error(`[ftp] não consegui abrir ${pasta}:`, e.message);
     if (nivel === 0) throw new Error(`Não consegui abrir a pasta "${pasta}" no FTP: ${e.message}`);
     diagnostico.errosEmSubpastas = (diagnostico.errosEmSubpastas || 0) + 1;
@@ -146,7 +150,17 @@ async function sincronizarFtp(cfg) {
     });
     const arquivos = [];
     diagnostico = { pastaConfigurada: raiz };
-    try { diagnostico.pastaInicialDoUsuario = await cliente.pwd(); } catch (e) { /* ignora */ }
+    try { diagnostico.pastaInicialDoUsuario = await cliente.pwd(); } catch (e) { diagnostico.pastaInicialDoUsuario = `erro: ${e.message}`; }
+    // não usar "LIST -a": vários servidores entendem o "-a" como nome de pasta e devolvem lista vazia
+    cliente.availableListCommands = cliente.availableListCommands.filter((c) => c !== 'LIST -a');
+    if (!cliente.availableListCommands.length) cliente.availableListCommands = ['LIST'];
+    diagnostico.comandoDeListagem = cliente.availableListCommands.join(' / ');
+    // guarda a resposta crua da primeira listagem, para diagnóstico
+    const parseOriginal = cliente.parseList;
+    cliente.parseList = (texto) => {
+      if (diagnostico.respostaCrua === undefined) diagnostico.respostaCrua = String(texto).slice(0, 1200);
+      return parseOriginal(texto);
+    };
     await listarClaxFtp(cliente, raiz, 0, arquivos);
     const vistos = new Set();
     for (const { caminho, chave } of arquivos) {
