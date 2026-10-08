@@ -1,0 +1,401 @@
+<title>Resultados das Provas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:wght@400;500;600&family=Roboto+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: faixa escura de cabeçalho estilo pórtico de chegada; conteúdo em coluna única de até 1120px */
+:root{
+  --bg:#eef1f8; --surface:#ffffff; --ink:#111733; --muted:#56607e; --line:#d9deec;
+  --accent:#ffc61a; --accent-ink:#141a3a; --accent-soft:#fff4cc; --accent-text:#7a5a00;
+  --chart:#2c46c9; --hover:#eef1fd;
+  --band:#1a2a7a; --band-ink:#f4f6ff; --band-muted:#aab5e6;
+  --gold:#d4a514; --silver:#8a93a8; --bronze:#b56d3e; --fem:#c2367a;
+  --display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"Roboto Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0c1028; --surface:#141a3c; --ink:#eef1ff; --muted:#9ba5cf; --line:#283163;
+  --accent:#ffc61a; --accent-ink:#141a3a; --accent-soft:#3a3214; --accent-text:#ffd75a;
+  --chart:#7b93ff; --hover:#1c2450;
+  --band:#0a0e24; --band-ink:#eef1ff; --band-muted:#8f9ad0;
+  --gold:#e8bb2e; --silver:#aab3c8; --bronze:#d48c5a; --fem:#ec6aa8; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0c1028; --surface:#141a3c; --ink:#eef1ff; --muted:#9ba5cf; --line:#283163;
+  --accent:#ffc61a; --accent-ink:#141a3a; --accent-soft:#3a3214; --accent-text:#ffd75a;
+  --chart:#7b93ff; --hover:#1c2450;
+  --band:#0a0e24; --band-ink:#eef1ff; --band-muted:#8f9ad0;
+  --gold:#e8bb2e; --silver:#aab3c8; --bronze:#d48c5a; --fem:#ec6aa8; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5}
+.wrap{max-width:1120px;margin:0 auto;padding-inline:16px}
+a{color:inherit}
+button,select,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* faixa superior */
+.band{background:var(--band);color:var(--band-ink);position:relative;overflow:hidden}
+.band::after{content:"";position:absolute;inset:auto 0 0 0;height:6px;
+  background:repeating-linear-gradient(90deg,var(--band-ink) 0 14px,var(--band) 14px 28px);opacity:.9}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:14px}
+.logo{display:flex;align-items:center;gap:10px;text-decoration:none}
+.logo-mark{width:34px;height:34px;border-radius:8px;background:var(--accent);display:grid;place-items:center;
+  font-family:var(--display);font-weight:800;color:var(--accent-ink);font-size:18px}
+.logo-txt{font-family:var(--display);font-weight:700;letter-spacing:.06em;text-transform:uppercase;font-size:17px}
+.demo-tag{font-size:12px;color:var(--band-muted);border:1px solid #ffffff2a;border-radius:99px;padding:3px 10px}
+.hero{padding-block:22px 34px}
+.eyebrow{font-family:var(--display);text-transform:uppercase;letter-spacing:.16em;font-size:13px;color:var(--accent);font-weight:600}
+.hero h1{font-family:var(--display);font-weight:800;font-size:clamp(34px,6vw,56px);line-height:1;margin:6px 0 10px;text-wrap:balance;text-transform:uppercase}
+.hero p{color:var(--band-muted);margin:0;max-width:60ch}
+.back{display:inline-flex;align-items:center;gap:6px;color:var(--band-muted);text-decoration:none;font-size:14px;margin-bottom:14px}
+.back:hover{color:var(--band-ink)}
+.meta{display:flex;flex-wrap:wrap;gap:8px 18px;color:var(--band-muted);font-size:14px;margin-top:6px}
+.meta b{color:var(--band-ink);font-weight:600}
+.seg{display:inline-flex;background:#ffffff14;border-radius:10px;padding:4px;margin-top:18px;gap:4px}
+.seg button{border:0;background:transparent;color:var(--band-muted);padding:7px 14px;border-radius:7px;cursor:pointer;font-weight:600}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+
+main{padding-block:26px 60px;display:grid;gap:30px}
+h2{font-family:var(--display);text-transform:uppercase;letter-spacing:.04em;font-size:24px;margin:0;font-weight:700}
+.sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.count{color:var(--muted);font-size:14px}
+
+/* filtros */
+.filters{display:flex;flex-wrap:wrap;gap:10px}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+select,input[type=search]{background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:9px 12px;min-height:42px}
+input[type=search]{min-width:min(280px,100%)}
+.field.grow{flex:1 1 240px}
+
+/* lista de eventos */
+.events{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.ev{display:flex;gap:14px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  padding:14px;text-decoration:none;transition:border-color .15s,transform .15s}
+.ev:hover{border-color:var(--chart);transform:translateY(-1px)}
+.date{flex:none;width:58px;text-align:center;border-radius:9px;background:var(--band);color:var(--band-ink);padding:6px 0}
+.date .d{font-family:var(--display);font-weight:800;font-size:28px;line-height:1}
+.date .m{font-family:var(--display);font-size:13px;letter-spacing:.12em;color:var(--accent);font-weight:700}
+.ev-body{min-width:0}
+.ev-name{font-weight:600;line-height:1.25}
+.ev-sub{color:var(--muted);font-size:13px;margin-top:3px}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.chip{font-size:12px;padding:2px 8px;border-radius:99px;background:var(--accent-soft);color:var(--accent-text);font-weight:600}
+.empty{color:var(--muted);padding:30px;text-align:center;border:1px dashed var(--line);border-radius:12px}
+
+/* pódio */
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tabs button{border:1px solid var(--line);background:var(--surface);border-radius:99px;padding:5px 14px;cursor:pointer;font-weight:600;font-size:14px}
+.tabs button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.podiums{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.podium{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px}
+.podium h3{margin:0 0 12px;font-family:var(--display);text-transform:uppercase;letter-spacing:.06em;font-size:17px;display:flex;align-items:center;gap:8px}
+.sym{font-size:15px}
+.pod-row{display:grid;grid-template-columns:34px 1fr auto;gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--line)}
+.pod-row:first-of-type{border-top:0}
+.medal{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-family:var(--display);font-weight:800;color:#fff;font-size:16px}
+.m1{background:var(--gold)}.m2{background:var(--silver)}.m3{background:var(--bronze)}
+.pod-name{font-weight:600;line-height:1.2;min-width:0;overflow-wrap:anywhere}
+.pod-sub{color:var(--muted);font-size:12.5px}
+.pod-time{text-align:right;font-family:var(--mono);font-weight:600;font-variant-numeric:tabular-nums}
+.pod-time small{display:block;color:var(--muted);font-weight:500;font-size:12px}
+
+/* números */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.stat{background:var(--surface);padding:14px 16px}
+.stat .k{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+.stat .v{font-family:var(--mono);font-weight:600;font-size:21px;font-variant-numeric:tabular-nums;margin-top:2px}
+.stat .n{font-size:12.5px;color:var(--muted)}
+.hist{margin-top:12px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.hist .k{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;margin-bottom:8px}
+.hist svg{width:100%;height:auto;display:block}
+
+/* tabela */
+.table-box{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+tbody tr{cursor:pointer}
+tbody tr:hover td{background:var(--hover)}
+tbody tr:last-child td{border-bottom:0}
+.pos{font-family:var(--display);font-weight:800;font-size:20px;width:52px}
+.ath{font-weight:600;line-height:1.2}
+.ath small{display:block;color:var(--muted);font-weight:400;font-size:12.5px}
+.bib{font-family:var(--mono);font-size:13px;color:var(--muted);white-space:nowrap}
+.time{font-family:var(--mono);font-weight:600;white-space:nowrap}
+.pace{font-family:var(--mono);color:var(--muted);font-size:13px;white-space:nowrap}
+.cat{white-space:nowrap;font-size:13.5px}
+.catpos{font-size:12.5px;color:var(--muted);white-space:nowrap}
+.f{color:var(--fem)}
+.badge{display:inline-block;font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:6px;background:var(--accent);color:var(--accent-ink);margin-left:6px;vertical-align:1px}
+.dnf{font-family:var(--display);font-weight:700;color:var(--muted);letter-spacing:.06em}
+.pager{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}
+.pager button{border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:8px 16px;cursor:pointer;font-weight:600}
+.pager button:disabled{opacity:.4;cursor:default}
+.pager span{color:var(--muted);font-size:14px}
+
+@media (max-width:720px){
+  .hide-sm{display:none}
+  td,th{padding:9px 8px}
+  .pos{width:40px;font-size:18px}
+}
+
+/* ficha do atleta */
+.overlay{position:fixed;inset:0;background:#000a;display:grid;place-items:center;padding:16px;z-index:10}
+.sheet{background:var(--surface);border-radius:16px;max-width:460px;width:100%;overflow:hidden;max-height:90vh;overflow-y:auto}
+.sheet-top{background:var(--band);color:var(--band-ink);padding:20px;position:relative}
+.sheet-top .bibbig{font-family:var(--display);font-weight:800;font-size:15px;letter-spacing:.12em;color:var(--accent)}
+.sheet-top h3{font-family:var(--display);text-transform:uppercase;font-size:30px;line-height:1.05;margin:4px 0 4px;font-weight:800}
+.sheet-top p{margin:0;color:var(--band-muted);font-size:14px}
+.close{position:absolute;top:12px;right:12px;border:0;background:#ffffff18;color:var(--band-ink);width:34px;height:34px;border-radius:50%;cursor:pointer;font-size:18px}
+.sheet-time{padding:20px;text-align:center;border-bottom:1px solid var(--line)}
+.sheet-time .t{font-family:var(--mono);font-weight:600;font-size:40px;font-variant-numeric:tabular-nums;line-height:1.1}
+.sheet-time .p{color:var(--muted);font-size:14px}
+.ranks{display:grid;grid-template-columns:repeat(3,1fr)}
+.ranks div{padding:16px 8px;text-align:center;border-right:1px solid var(--line)}
+.ranks div:last-child{border-right:0}
+.ranks b{display:block;font-family:var(--display);font-size:30px;font-weight:800;line-height:1}
+.ranks span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.splits{padding:6px 20px 20px}
+.splits h4{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:14px 0 6px}
+.split{display:grid;grid-template-columns:1fr auto auto;gap:14px;padding:7px 0;border-top:1px solid var(--line);font-size:14px}
+.split .time,.split .pace{text-align:right}
+
+.live{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--band-ink);background:#ffffff1a;border-radius:99px;padding:3px 10px}
+.live::before{content:"";width:8px;height:8px;border-radius:50%;background:#ff4d4d;animation:pulse 1.4s infinite}
+@keyframes pulse{50%{opacity:.3}}
+.loading{color:var(--muted);padding:40px;text-align:center}
+.sheet-sub{display:flex;justify-content:center;gap:18px;flex-wrap:wrap;color:var(--muted);font-size:13.5px;margin-top:6px}
+.sheet-sub b{color:var(--ink);font-family:var(--mono);font-weight:600}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="band">
+  <div class="wrap">
+    <div class="topbar">
+      <a class="logo" href="#"><span class="logo-mark">R</span><span class="logo-txt">Seu Logo</span></a>
+      <span class="demo-tag" id="tag">Resultados oficiais</span>
+    </div>
+    <div class="hero" id="hero"></div>
+  </div>
+</div>
+<main class="wrap" id="app"></main>
+<div class="overlay" id="sheet" hidden></div>
+
+<script>
+/* ---------- dados: vêm da API do servidor (ou embutidos, na prévia) ---------- */
+async function api(caminho){
+  const E=window.DADOS_EMBUTIDOS;
+  if(E){ if(caminho==="/api/eventos")return E.eventos; return E.detalhes[decodeURIComponent(caminho.split("/").pop())]||null; }
+  const r=await fetch(caminho,{cache:"no-store"});
+  if(r.status===404)return null;
+  if(!r.ok)throw new Error("Falha ao carregar ("+r.status+")");
+  return r.json();
+}
+
+/* ---------- utilitários ---------- */
+const MES=["JAN","FEV","MAR","ABR","MAI","JUN","JUL","AGO","SET","OUT","NOV","DEZ"];
+const MESL=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+const fmtT=s=>{if(s==null)return"—";const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return[h,m,x].map(v=>String(v).padStart(2,"0")).join(":")};
+const fmtP=(s,km)=>{if(!km||s==null)return"";const p=Math.round(s/km);return Math.floor(p/60)+"'"+String(p%60).padStart(2,"0")+'"/km'};
+const kmh=(s,km)=>km&&s?(km/(s/3600)).toFixed(1).replace(".",","):"";
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const norm=s=>String(s).normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
+const dObj=s=>{const[y,m,d]=(s||"0-1-1").split("-").map(Number);return{y,m,d}};
+const hoje=()=>new Date().toLocaleDateString("en-CA",{timeZone:"America/Sao_Paulo"});
+const n=v=>Number(v).toLocaleString("pt-BR");
+
+const state={eventos:null,month:"",year:"",ev:null,mode:"res",dist:"",cat:"",sex:"",q:"",page:1,podDist:null};
+const hero=document.getElementById("hero"), app=document.getElementById("app"), sheet=document.getElementById("sheet");
+let timerAoVivo=null;
+
+/* ---------- tela: lista de eventos ---------- */
+async function renderList(){
+  hero.innerHTML=`<div class="eyebrow">Resultados oficiais</div><h1>Seu tempo, sua história</h1>
+   <p>Encontre o evento e busque seu resultado pelo nome ou número de peito.</p>`;
+  if(!state.eventos){
+    app.innerHTML=`<div class="loading">Carregando eventos…</div>`;
+    try{state.eventos=await api("/api/eventos")}catch(e){app.innerHTML=`<div class="empty">Não foi possível carregar os eventos. Tente de novo em instantes.</div>`;return}
+  }
+  const EV=state.eventos;
+  const years=[...new Set(EV.map(e=>dObj(e.data).y))].sort((a,b)=>b-a);
+  const list=EV.filter(e=>{const d=dObj(e.data);return(!state.month||d.m==state.month)&&(!state.year||d.y==state.year)});
+  app.innerHTML=`<section>
+    <div class="sec-head"><h2>Eventos</h2><span class="count">${list.length} evento${list.length===1?"":"s"}</span></div>
+    <div class="filters" style="margin-bottom:14px">
+      <div class="field"><label for="f-month">Mês</label><select id="f-month"><option value="">Todos os meses</option>${MESL.map((m,i)=>`<option value="${i+1}" ${state.month==i+1?"selected":""}>${m}</option>`).join("")}</select></div>
+      <div class="field"><label for="f-year">Ano</label><select id="f-year"><option value="">Todos os anos</option>${years.map(y=>`<option ${state.year==y?"selected":""}>${y}</option>`).join("")}</select></div>
+    </div>
+    ${list.length?`<div class="events">${list.map(e=>{const d=dObj(e.data);return`<a class="ev" href="#${esc(e.slug)}">
+      <div class="date"><div class="d">${String(d.d).padStart(2,"0")}</div><div class="m">${MES[d.m-1]||""}</div></div>
+      <div class="ev-body"><div class="ev-name">${esc(e.nome)}</div><div class="ev-sub">${[e.cidade,e.tipo].filter(Boolean).map(esc).join(" · ")}</div>
+      <div class="chips">${e.data===hoje()?'<span class="chip">Ao vivo</span>':""}${e.percursos.map(p=>`<span class="chip">${esc(p.nome)}</span>`).join("")}</div></div></a>`}).join("")}</div>`
+    :`<div class="empty">${EV.length?"Nenhum evento nesse período. Troque o mês ou o ano.":"Nenhum evento publicado ainda."}</div>`}
+  </section>`;
+  document.getElementById("f-month").onchange=e=>{state.month=e.target.value;renderList()};
+  document.getElementById("f-year").onchange=e=>{state.year=e.target.value;renderList()};
+}
+
+/* ---------- tela: evento ---------- */
+const kmDe=(ev,nome)=>(ev.percursos.find(p=>p.nome===nome)||{}).km;
+const catNome=(ev,a)=>a.ca?(ev.categorias[a.ca]||a.ca):"";
+
+function renderEvent(ev){
+  const d=dObj(ev.data), aoVivo=ev.data===hoje();
+  hero.innerHTML=`<a class="back" href="#">← Todos os eventos</a>
+   <div class="eyebrow">${state.mode==="res"?"Resultado oficial":"Lista de largada"}</div>
+   <h1>${esc(ev.nome)}</h1>
+   <div class="meta">${aoVivo?'<span class="live">Ao vivo</span>':""}<span><b>${d.d} de ${(MESL[d.m-1]||"").toLowerCase()} de ${d.y}</b></span>${ev.cidade?`<span>${esc(ev.cidade)}</span>`:""}<span>${esc(ev.tipo)}</span><span>${n(ev.inscritos)} inscritos · ${n(ev.concluintes)} concluíram</span></div>
+   <div class="seg" role="group" aria-label="Visualização">
+     <button id="m-res" aria-pressed="${state.mode==="res"}">Resultado oficial</button>
+     <button id="m-lar" aria-pressed="${state.mode==="lar"}">Lista de largada</button></div>`;
+  document.getElementById("m-res").onclick=()=>{state.mode="res";state.page=1;renderEvent(ev)};
+  document.getElementById("m-lar").onclick=()=>{state.mode="lar";state.page=1;renderEvent(ev)};
+
+  const nomes=ev.percursos.map(p=>p.nome);
+  if(state.podDist==null||!nomes.includes(state.podDist))state.podDist=nomes[0];
+  let html="";
+  if(state.mode==="res"&&ev.concluintes){
+    html+=`<section><div class="sec-head"><h2>Pódio</h2>
+      <div class="tabs" role="group" aria-label="Percurso do pódio">${nomes.map(x=>`<button data-pd="${esc(x)}" aria-pressed="${x===state.podDist}">${esc(x)}</button>`).join("")}</div></div>
+      <div class="podiums">${["M","F"].map(s=>{
+        const top=ev.atletas.filter(a=>a.p===state.podDist&&a.x===s&&a.st==="ok"&&a.sp<=3).sort((a,b)=>a.sp-b.sp);
+        const km=kmDe(ev,state.podDist);
+        return`<div class="podium"><h3><span class="sym ${s==="F"?"f":""}">${s==="F"?"♀":"♂"}</span>Geral ${s==="F"?"Feminino":"Masculino"}</h3>
+        ${top.length?top.map((a,i)=>`<div class="pod-row" data-bib="${a.d}" style="cursor:pointer"><span class="medal m${i+1}">${i+1}</span>
+          <div class="pod-name">${esc(a.n)}<div class="pod-sub">Peito ${a.d}${a.c?" · "+esc(a.c):""}</div></div>
+          <div class="pod-time">${fmtT(a.t)}<small>${fmtP(a.t,km)}</small></div></div>`).join(""):`<div class="pod-sub">Ainda sem chegadas.</div>`}</div>`}).join("")}</div>
+    </section>`;
+    html+=statsBlock(ev,state.podDist);
+  }
+  html+=`<section id="tbl-sec"></section>`;
+  app.innerHTML=html;
+  app.querySelectorAll("[data-pd]").forEach(b=>b.onclick=()=>{state.podDist=b.dataset.pd;renderEvent(ev)});
+  app.querySelectorAll(".pod-row").forEach(r=>r.onclick=()=>openSheet(ev,+r.dataset.bib));
+  renderTable(ev);
+}
+
+function statsBlock(ev,nome){
+  const km=kmDe(ev,nome);
+  const fin=ev.atletas.filter(a=>a.p===nome&&a.st==="ok").map(a=>a.t).sort((a,b)=>a-b);
+  if(!fin.length)return"";
+  const avg=Math.round(fin.reduce((s,x)=>s+x,0)/fin.length);
+  const med=fin.length%2?fin[(fin.length-1)/2]:Math.round((fin[fin.length/2-1]+fin[fin.length/2])/2);
+  // histograma: ignora os 2% extremos de cada lado para a escala não esticar
+  const a0=fin[Math.floor(fin.length*.01)], a1=fin[Math.min(fin.length-1,Math.ceil(fin.length*.99)-1)];
+  const span=a1-a0, step=span>5400?900:span>2400?300:span>900?120:60;
+  const lo=Math.floor(a0/step)*step, hi=Math.max(lo+step,Math.ceil((a1+1)/step)*step);
+  const bins=[];for(let t=lo;t<hi;t+=step)bins.push({t,c:0});
+  fin.forEach(x=>{if(x<lo||x>=hi)return;bins[Math.floor((x-lo)/step)].c++});
+  const max=Math.max(1,...bins.map(b=>b.c)), W=640, H=120, pad=22, bw=W/bins.length;
+  const medX=Math.max(0,Math.min(W,((med-lo)/(hi-lo))*W));
+  const lab=t=>{const h=Math.floor(t/3600),m=Math.floor(t%3600/60);return h?`${h}h${String(m).padStart(2,"0")}`:`${m}min`};
+  const every=Math.ceil(bins.length/7);
+  const svg=`<svg viewBox="0 0 ${W} ${H+pad}" role="img" aria-label="Distribuição dos tempos de chegada no percurso ${esc(nome)}">
+    ${bins.map((b,i)=>{const h=b.c/max*(H-16);return`<rect x="${i*bw+1}" y="${H-h}" width="${Math.max(1,bw-2)}" height="${h}" rx="2" fill="var(--chart)" opacity="${b.t<=med&&med<b.t+step?1:.45}"><title>${lab(b.t)}–${lab(b.t+step)}: ${b.c} atletas</title></rect>`}).join("")}
+    <line x1="0" x2="${W}" y1="${H}" y2="${H}" stroke="var(--line)"/>
+    <line x1="${medX}" x2="${medX}" y1="4" y2="${H}" stroke="var(--ink)" stroke-dasharray="3 3"/>
+    <text x="${Math.min(medX+5,W-120)}" y="12" font-size="11" fill="var(--ink)" font-family="Barlow,sans-serif">mediana ${fmtT(med)}</text>
+    ${bins.map((b,i)=>i%every===0&&i*bw<W-40?`<text x="${i*bw}" y="${H+15}" font-size="11" fill="var(--muted)" font-family="Barlow,sans-serif">${lab(b.t)}</text>`:"").join("")}
+  </svg>`;
+  return`<section><div class="sec-head"><h2>A prova em números · ${esc(nome)}</h2></div>
+   <div class="stats">
+    <div class="stat"><div class="k">Concluíram</div><div class="v">${n(fin.length)}</div></div>
+    <div class="stat"><div class="k">Melhor tempo</div><div class="v">${fmtT(fin[0])}</div><div class="n">${fmtP(fin[0],km)}</div></div>
+    <div class="stat"><div class="k">Tempo médio</div><div class="v">${fmtT(avg)}</div><div class="n">mediana ${fmtT(med)}</div></div>
+    ${km?`<div class="stat"><div class="k">Ritmo médio</div><div class="v">${fmtP(avg,km).replace("/km","")}</div><div class="n">por km</div></div>
+    <div class="stat"><div class="k">Velocidade média</div><div class="v">${kmh(avg,km)}</div><div class="n">km/h</div></div>`:""}
+   </div>
+   <div class="hist"><div class="k">Distribuição dos tempos de chegada</div>${svg}</div></section>`;
+}
+
+function renderTable(ev){
+  const sec=document.getElementById("tbl-sec");
+  const res=state.mode==="res";
+  const ordemP=Object.fromEntries(ev.percursos.map((p,i)=>[p.nome,i]));
+  let rows=ev.atletas.filter(a=>(!res||a.st!=="ns")&&(!state.dist||a.p===state.dist)&&(!state.sex||a.x===state.sex)&&(!state.cat||a.ca===state.cat));
+  if(state.q){const q=norm(state.q.trim());rows=rows.filter(a=>norm(a.n).includes(q)||String(a.d).startsWith(q))}
+  if(res)rows.sort((a,b)=>((a.st==="dsq")-(b.st==="dsq"))||(ordemP[a.p]-ordemP[b.p])||((a.pos||1e9)-(b.pos||1e9))||a.d-b.d);
+  else rows.sort((a,b)=>a.d-b.d);
+  const per=50, pages=Math.max(1,Math.ceil(rows.length/per));
+  state.page=Math.min(state.page,pages);
+  const slice=rows.slice((state.page-1)*per,state.page*per);
+  const total=res?ev.atletas.filter(a=>a.st!=="ns").length:ev.atletas.length;
+  sec.innerHTML=`<div class="sec-head"><h2>${res?"Classificação":"Atletas inscritos"}</h2><span class="count">${n(rows.length)} de ${n(total)} atletas</span></div>
+   <div class="filters" style="margin-bottom:12px">
+    <div class="field grow"><label for="f-q">Buscar</label><input type="search" id="f-q" placeholder="Nome ou número de peito" value="${esc(state.q)}"></div>
+    <div class="field"><label for="f-dist">Percurso</label><select id="f-dist"><option value="">Todos os percursos</option>${ev.percursos.map(p=>`<option ${state.dist===p.nome?"selected":""}>${esc(p.nome)}</option>`).join("")}</select></div>
+    <div class="field"><label for="f-sex">Sexo</label><select id="f-sex"><option value="">Todos</option><option value="M" ${state.sex==="M"?"selected":""}>Masculino</option><option value="F" ${state.sex==="F"?"selected":""}>Feminino</option></select></div>
+    <div class="field"><label for="f-cat">Categoria</label><select id="f-cat"><option value="">Todas as categorias</option>${ev.ordemCategorias.map(c=>`<option value="${esc(c)}" ${state.cat===c?"selected":""}>${esc(ev.categorias[c]||c)}</option>`).join("")}</select></div>
+   </div>
+   ${slice.length?`<div class="table-box"><table>
+    <thead><tr>${res?"<th>Pos</th>":""}<th>Atleta</th><th>Peito</th><th>Percurso</th><th class="hide-sm">Categoria</th>${res?'<th>Tempo</th><th class="hide-sm">Ritmo</th>':""}</tr></thead>
+    <tbody>${slice.map(a=>{const ok=a.st==="ok";return`<tr data-bib="${a.d}">
+      ${res?`<td class="pos">${ok?a.pos:'<span class="dnf">—</span>'}</td>`:""}
+      <td class="ath">${a.x==="F"?'<span class="f">♀ </span>':""}${esc(a.n)}${res&&ok&&a.sp<=3?`<span class="badge">${a.sp}º ${a.x}</span>`:""}<small>${a.c?esc(a.c):"&nbsp;"}</small></td>
+      <td class="bib">Nº ${a.d}</td>
+      <td>${esc(a.p)}</td>
+      <td class="hide-sm"><div class="cat">${esc(catNome(ev,a))}</div>${res&&ok&&a.cp?`<div class="catpos">${a.cp}º na categoria</div>`:""}</td>
+      ${res?`<td class="time">${ok?fmtT(a.t):'<span class="dnf">DESCLASSIFICADO</span>'}</td><td class="pace hide-sm">${ok?fmtP(a.t,kmDe(ev,a.p)):""}</td>`:""}
+    </tr>`}).join("")}</tbody></table></div>
+    <div class="pager"><button id="pg-prev" ${state.page<=1?"disabled":""}>← Anterior</button><span>Página ${state.page} de ${pages}</span><button id="pg-next" ${state.page>=pages?"disabled":""}>Próxima →</button></div>`
+   :`<div class="empty">${rows.length||state.q||state.dist||state.sex||state.cat?"Nenhum atleta encontrado com esses filtros.":res?"Ainda não há resultados. Veja a lista de largada.":"Nenhum atleta inscrito."}</div>`}`;
+  document.getElementById("f-q").oninput=e=>{state.q=e.target.value;state.page=1;renderTable(ev);const el=document.getElementById("f-q");el.focus();el.setSelectionRange(el.value.length,el.value.length)};
+  document.getElementById("f-dist").onchange=e=>{state.dist=e.target.value;state.page=1;renderTable(ev)};
+  document.getElementById("f-sex").onchange=e=>{state.sex=e.target.value;state.page=1;renderTable(ev)};
+  document.getElementById("f-cat").onchange=e=>{state.cat=e.target.value;state.page=1;renderTable(ev)};
+  const pv=document.getElementById("pg-prev"),nx=document.getElementById("pg-next");
+  if(pv)pv.onclick=()=>{state.page--;renderTable(ev);sec.scrollIntoView({behavior:"smooth"})};
+  if(nx)nx.onclick=()=>{state.page++;renderTable(ev);sec.scrollIntoView({behavior:"smooth"})};
+  sec.querySelectorAll("tbody tr").forEach(r=>r.onclick=()=>openSheet(ev,+r.dataset.bib));
+}
+
+/* ---------- ficha do atleta ---------- */
+function openSheet(ev,bib){
+  const a=ev.atletas.find(x=>x.d===bib); if(!a)return;
+  const ok=a.st==="ok", km=kmDe(ev,a.p);
+  const fin=ev.atletas.filter(x=>x.p===a.p&&x.st==="ok");
+  const nSexo=fin.filter(x=>x.x===a.x).length, nCat=fin.filter(x=>x.ca===a.ca).length;
+  const tempo=ok?fmtT(a.t):a.st==="dsq"?"DESCLASSIFICADO":"SEM TEMPO";
+  sheet.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-label="Resultado de ${esc(a.n)}">
+    <div class="sheet-top"><button class="close" id="sh-x" aria-label="Fechar">×</button>
+      <div class="bibbig">PEITO ${a.d}</div><h3>${esc(a.n)}</h3>
+      <p>${[a.p,catNome(ev,a),a.c].filter(Boolean).map(esc).join(" · ")}</p></div>
+    <div class="sheet-time"><div class="t" style="${ok?"":"font-size:26px"}">${tempo}</div>
+      ${ok?`<div class="p">Tempo líquido${km?` · ritmo ${fmtP(a.t,km)} · ${kmh(a.t,km)} km/h`:""}</div>
+      ${a.tb!=null&&a.tb!==a.t?`<div class="sheet-sub"><span>Tempo bruto <b>${fmtT(a.tb)}</b></span></div>`:""}`:""}</div>
+    ${ok?`<div class="ranks"><div><b>${a.pos}º</b><span>Geral de ${n(fin.length)}</span></div><div><b>${a.sp}º</b><span>${a.x==="F"?"Fem":"Masc"} de ${n(nSexo)}</span></div>${a.cp?`<div><b>${a.cp}º</b><span>Categ. de ${n(nCat)}</span></div>`:"<div><b>—</b><span>Categoria</span></div>"}</div>`:""}
+  </div>`;
+  sheet.hidden=false;
+  const x=document.getElementById("sh-x"); x.focus(); x.onclick=closeSheet;
+}
+function closeSheet(){sheet.hidden=true}
+sheet.addEventListener("click",e=>{if(e.target===sheet)closeSheet()});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!sheet.hidden)closeSheet()});
+
+/* ---------- rotas ---------- */
+async function route(){
+  clearInterval(timerAoVivo);
+  const slug=location.hash.slice(1);
+  closeSheet(); window.scrollTo(0,0);
+  if(!slug){state.ev=null;return renderList()}
+  if(!state.ev||state.ev.slug!==slug){
+    hero.innerHTML=`<a class="back" href="#">← Todos os eventos</a>`;
+    app.innerHTML=`<div class="loading">Carregando resultados…</div>`;
+    let ev;
+    try{ev=await api("/api/eventos/"+encodeURIComponent(slug))}catch(e){app.innerHTML=`<div class="empty">Não foi possível carregar o evento. Tente de novo em instantes.</div>`;return}
+    if(!ev){app.innerHTML=`<div class="empty">Evento não encontrado.</div>`;return}
+    Object.assign(state,{ev,mode:ev.concluintes?"res":"lar",dist:"",cat:"",sex:"",q:"",page:1,podDist:null});
+  }
+  renderEvent(state.ev);
+  // no dia da prova, recarrega os resultados a cada minuto
+  if(state.ev.data===hoje()&&!window.DADOS_EMBUTIDOS){
+    timerAoVivo=setInterval(async()=>{
+      if(!sheet.hidden||document.activeElement?.id==="f-q")return;
+      try{const novo=await api("/api/eventos/"+encodeURIComponent(state.ev.slug));if(novo){state.ev=novo;renderEvent(novo)}}catch(e){}
+    },60000);
+  }
+}
+window.addEventListener("hashchange",route);
+route();
+</script>

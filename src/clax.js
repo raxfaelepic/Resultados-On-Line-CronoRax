@@ -1,0 +1,136 @@
+// Lê um arquivo .clax (XML do Wiclax) e devolve o evento pronto para a página.
+// IMPORTANTE: só copia campos públicos. CPF, telefone e e-mail (InfoPerso ip0/ip1/ip2)
+// e ano de nascimento NUNCA saem daqui.
+
+const { XMLParser } = require('fast-xml-parser');
+
+const parser = new XMLParser({
+  ignoreAttributes: false,
+  attributeNamePrefix: '',
+  parseAttributeValue: false,
+  parseTagValue: false,
+  isArray: (nome) => ['Etape', 'E', 'R', 'C', 'G', 'Pcs'].includes(nome),
+});
+
+// "00h16'13" ou "07h06'06,048" -> segundos (ignora fração)
+function tempoEmSegundos(txt) {
+  const m = /^(\d+)h(\d+)'(\d+)/.exec(txt || '');
+  if (!m) return null;
+  return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+}
+
+// "10 KM", "5 KM PCD", "21,1K" -> 10 / 5 / 21.1
+function kmDoNome(nome) {
+  const m = /(\d+(?:[.,]\d+)?)\s*K/i.exec(nome || '');
+  return m ? parseFloat(m[1].replace(',', '.')) : null;
+}
+
+function slugify(txt) {
+  return String(txt)
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
+const limpa = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+
+/**
+ * @param {string} xml      conteúdo do .clax
+ * @param {object} opcoes   { arquivo, config }  config = dados extras do eventos.json
+ */
+function lerClax(xml, { arquivo = '', config = {} } = {}) {
+  const raiz = parser.parse(xml).Epreuve;
+  if (!raiz) throw new Error('Arquivo não parece um .clax do Wiclax (sem <Epreuve>)');
+
+  const etapa = (raiz.Etapes && raiz.Etapes.Etape && raiz.Etapes.Etape[0]) || {};
+  const ocultarPercursos = new Set((config.ocultarPercursos || []).map((p) => p.toUpperCase()));
+
+  // percursos na ordem do Wiclax
+  const percursos = ((raiz.Parcours && raiz.Parcours.Pcs) || [])
+    .map((p) => limpa(p.nom))
+    .filter((nome) => nome && !ocultarPercursos.has(nome.toUpperCase()))
+    .map((nome) => ({ nome, km: (config.km && config.km[nome]) || kmDoNome(nome) }));
+  const percursoValido = new Set(percursos.map((p) => p.nome));
+
+  // categorias: abreviação -> nome
+  const categorias = {};
+  const ordemCat = [];
+  for (const g of (raiz.Categories && raiz.Categories.G) || []) {
+    for (const c of g.C || []) {
+      if (c.abr && !categorias[c.abr]) { categorias[c.abr] = limpa(c.nom) || c.abr; ordemCat.push(c.abr); }
+    }
+  }
+
+  // inscritos (só campos públicos)
+  const atletas = new Map();
+  for (const e of (etapa.Engages && etapa.Engages.E) || []) {
+    const nome = limpa(e.n);
+    const percurso = limpa(e.p);
+    if (!e.d || !nome || nome.startsWith('*****')) continue;   // "ATLETA DESCONHECIDO"
+    if (!percursoValido.has(percurso)) continue;               // sem percurso ou percurso oculto
+    atletas.set(String(e.d), {
+      d: Number(e.d),
+      n: nome,
+      x: e.x === 'F' ? 'F' : e.x === 'M' ? 'M' : '',
+      ca: e.ca || '',
+      p: percurso,
+      c: limpa(e.c),
+      t: null,     // tempo líquido (chip), em segundos
+      tb: null,    // tempo bruto (desde a largada do percurso)
+      st: 'ns',    // ns = sem resultado, ok = concluiu, dsq = desclassificado
+    });
+  }
+
+  // resultados
+  for (const r of (etapa.Resultats && etapa.Resultats.R) || []) {
+    const a = atletas.get(String(r.d));
+    if (!a) continue;
+    const t = tempoEmSegundos(r.t);
+    if (t != null) {
+      a.t = t;
+      a.tb = tempoEmSegundos(r.re);
+      a.st = 'ok';
+    } else if (/desq|dsq/i.test(r.t || '') || r.tr === '5') {
+      a.st = 'dsq';
+    }
+  }
+
+  // classificações por percurso: geral, por sexo e por categoria (pelo tempo líquido)
+  const lista = [...atletas.values()];
+  for (const { nome } of percursos) {
+    const chegaram = lista.filter((a) => a.p === nome && a.st === 'ok').sort((a, b) => a.t - b.t || a.d - b.d);
+    const porSexo = {}, porCat = {};
+    chegaram.forEach((a, i) => {
+      a.pos = i + 1;
+      porSexo[a.x] = (porSexo[a.x] || 0) + 1; a.sp = porSexo[a.x];
+      if (a.ca) { porCat[a.ca] = (porCat[a.ca] || 0) + 1; a.cp = porCat[a.ca]; }
+    });
+  }
+
+  const nome = limpa(raiz.nom) || arquivo.replace(/\.clax$/i, '');
+  const data = raiz.dt1 || '';
+  const resumo = {
+    slug: config.slug || slugify(nome),
+    nome: config.nome || nome,
+    data: config.data || data,
+    cidade: config.cidade || '',
+    tipo: config.tipo || 'Corrida de rua',
+    organizador: limpa(raiz.organisateur),
+    percursos,
+    inscritos: lista.length,
+    concluintes: lista.filter((a) => a.st === 'ok').length,
+    atualizado: raiz.derSvg || '',
+    arquivo,
+  };
+
+  return {
+    resumo,
+    detalhe: {
+      ...resumo,
+      categorias,
+      ordemCategorias: ordemCat.filter((c) => lista.some((a) => a.ca === c)),
+      atletas: lista,
+    },
+  };
+}
+
+module.exports = { lerClax, tempoEmSegundos, kmDoNome, slugify };

@@ -1,0 +1,12 @@
+{
+  "padrao": {
+    "ocultarPercursos": ["EM ANALISE"]
+  },
+  "eventos": {
+    "LIVE__RUN_XP__-_S_O_PAULO.clax": {
+      "nome": "Live! Run XP São Paulo 2026",
+      "cidade": "São Paulo · SP",
+      "tipo": "Corrida de rua"
+    }
+  }
+}
