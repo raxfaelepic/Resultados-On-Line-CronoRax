@@ -298,6 +298,9 @@ async function renderList(){
 const kmDe=(ev,nome)=>(ev.percursos.find(p=>p.nome===nome)||{}).km;
 const catNome=(ev,a)=>a.ca?(ev.categorias[a.ca]||a.ca):"";
 // tempo usado na classificação geral (bruto pela regra da federação)
+const fmtKm=m=>m==null?"—":(m/1000).toLocaleString("pt-BR",{minimumFractionDigits:1,maximumFractionDigits:1})+" km";
+const nomePerc=ev=>ev.provaDeVoltas?"Modalidade":"Percurso";
+const statusTxt=a=>a.st==="dsq"?"DESCLASSIFICADO":a.st==="dnf"?"NÃO TERMINOU":"SEM TEMPO";
 const tGeral=(ev,a)=>ev.geralPor==="liquido"||a.tb==null?a.t:a.tb;
 
 function renderEvent(ev){
@@ -324,7 +327,7 @@ function renderEvent(ev){
         return`<div class="podium"><h3><span class="sym ${s==="F"?"f":""}">${s==="F"?"♀":"♂"}</span>Geral ${s==="F"?"Feminino":"Masculino"}</h3>
         ${top.length?top.map((a,i)=>`<div class="pod-row" data-bib="${a.d}" style="cursor:pointer"><span class="medal m${Math.min(i+1,4)}">${i+1}</span>
           <div class="pod-name">${esc(a.n)}<div class="pod-sub">Peito ${a.d}${a.c?" · "+esc(a.c):""}</div></div>
-          <div class="pod-time">${fmtT(tGeral(ev,a))}<small>${fmtP(tGeral(ev,a),km)}</small></div></div>`).join(""):`<div class="pod-sub">Ainda sem chegadas.</div>`}</div>`}).join("")}</div>
+          <div class="pod-time">${ev.provaDeVoltas?`${fmtKm(a.m)}<small>${a.v} voltas · ${fmtT(a.t)}</small>`:`${fmtT(tGeral(ev,a))}<small>${fmtP(tGeral(ev,a),km)}</small>`}</div></div>`).join(""):`<div class="pod-sub">Ainda sem chegadas.</div>`}</div>`}).join("")}</div>
     </section>`;
     html+=statsBlock(ev,state.podDist);
   }
@@ -335,7 +338,36 @@ function renderEvent(ev){
   renderTable(ev);
 }
 
+function statsBlockVoltas(ev,nome){
+  const lista=ev.atletas.filter(a=>a.p===nome&&(a.st==="ok"||a.st==="dnf")&&a.m);
+  if(!lista.length)return"";
+  const ms=lista.map(a=>a.m).sort((a,b)=>a-b), total=ms.reduce((x,y)=>x+y,0);
+  const media=total/ms.length, maior=ms[ms.length-1];
+  const voltasMed=lista.reduce((x,a)=>x+(a.v||0),0)/lista.length;
+  const melhorVolta=Math.min(...lista.map(a=>a.mv).filter(x=>x));
+  // histograma de distância
+  const kmMax=maior/1000, step=kmMax>150?20:kmMax>60?10:kmMax>25?5:2;
+  const nb=Math.max(1,Math.ceil((kmMax+0.001)/step)), bins=Array.from({length:nb},(_,i)=>({k:i*step,c:0}));
+  ms.forEach(m=>{bins[Math.min(nb-1,Math.floor(m/1000/step))].c++});
+  const max=Math.max(1,...bins.map(b=>b.c)), W=640, H=120, pad=22, bw=W/nb;
+  const svg=`<svg viewBox="0 0 ${W} ${H+pad}" role="img" aria-label="Distribuição das distâncias percorridas em ${esc(nome)}">
+    ${bins.map((b,i)=>{const h=b.c/max*(H-16);return`<rect x="${i*bw+1}" y="${H-h}" width="${Math.max(1,bw-2)}" height="${h}" rx="2" fill="var(--chart)"><title>${b.k}–${b.k+step} km: ${b.c} atletas</title></rect>`}).join("")}
+    <line x1="0" x2="${W}" y1="${H}" y2="${H}" stroke="var(--line)"/>
+    ${bins.map((b,i)=>i%Math.ceil(nb/8)===0?`<text x="${i*bw}" y="${H+15}" font-size="11" fill="var(--muted)" font-family="Roboto,sans-serif">${b.k} km</text>`:"").join("")}
+  </svg>`;
+  return`<section><div class="sec-head"><h2>A prova em números · ${esc(nome)}</h2></div>
+   <div class="stats">
+    <div class="stat"><div class="k">Participaram</div><div class="v">${n(lista.length)}</div></div>
+    <div class="stat"><div class="k">Maior distância</div><div class="v">${fmtKm(maior)}</div></div>
+    <div class="stat"><div class="k">Distância média</div><div class="v">${fmtKm(media)}</div><div class="n">${voltasMed.toFixed(1).replace(".",",")} voltas em média</div></div>
+    <div class="stat"><div class="k">Total percorrido</div><div class="v">${Math.round(total/1000).toLocaleString("pt-BR")} km</div><div class="n">somando todos</div></div>
+    ${isFinite(melhorVolta)?`<div class="stat"><div class="k">Volta mais rápida</div><div class="v">${fmtT(melhorVolta)}</div>${ev.distanciaVolta?`<div class="n">volta de ${(ev.distanciaVolta/1000).toLocaleString("pt-BR")} km</div>`:""}</div>`:""}
+   </div>
+   <div class="hist"><div class="k">Distribuição das distâncias percorridas</div>${svg}</div></section>`;
+}
+
 function statsBlock(ev,nome){
+  if(ev.provaDeVoltas)return statsBlockVoltas(ev,nome);
   const km=kmDe(ev,nome);
   const fin=ev.atletas.filter(a=>a.p===nome&&a.st==="ok").map(a=>a.t).sort((a,b)=>a-b);
   if(!fin.length)return"";
@@ -376,7 +408,7 @@ function renderTable(ev){
   const ordemP=Object.fromEntries(ev.percursos.map((p,i)=>[p.nome,i]));
   let rows=ev.atletas.filter(a=>(!res||a.st!=="ns")&&(!state.dist||a.p===state.dist)&&(!state.sex||a.x===state.sex)&&(!state.cat||a.ca===state.cat));
   if(state.q){const q=norm(state.q.trim());rows=rows.filter(a=>norm(a.n).includes(q)||String(a.d).startsWith(q))}
-  if(res)rows.sort((a,b)=>((a.st==="dsq")-(b.st==="dsq"))||(ordemP[a.p]-ordemP[b.p])||((a.pos||1e9)-(b.pos||1e9))||a.d-b.d);
+  if(res)rows.sort((a,b)=>((a.st==="dsq")-(b.st==="dsq"))||(ordemP[a.p]-ordemP[b.p])||((a.pos||1e9)-(b.pos||1e9))||((b.m||0)-(a.m||0))||a.d-b.d);
   else rows.sort((a,b)=>a.d-b.d);
   const per=50, pages=Math.max(1,Math.ceil(rows.length/per));
   state.page=Math.min(state.page,pages);
@@ -385,21 +417,22 @@ function renderTable(ev){
   sec.innerHTML=`<div class="sec-head"><h2>${res?"Classificação":"Atletas inscritos"}</h2><span class="count">${n(rows.length)} de ${n(total)} atletas</span></div>
    <div class="filters" style="margin-bottom:12px">
     <div class="field grow"><label for="f-q">Buscar</label><input type="search" id="f-q" placeholder="Nome ou número de peito" value="${esc(state.q)}"></div>
-    <div class="field"><label for="f-dist">Percurso</label><select id="f-dist"><option value="">Todos os percursos</option>${ev.percursos.map(p=>`<option ${state.dist===p.nome?"selected":""}>${esc(p.nome)}</option>`).join("")}</select></div>
+    <div class="field"><label for="f-dist">${nomePerc(ev)}</label><select id="f-dist"><option value="">${ev.provaDeVoltas?"Todas as modalidades":"Todos os percursos"}</option>${ev.percursos.map(p=>`<option ${state.dist===p.nome?"selected":""}>${esc(p.nome)}</option>`).join("")}</select></div>
     <div class="field"><label for="f-sex">Sexo</label><select id="f-sex"><option value="">Todos</option><option value="M" ${state.sex==="M"?"selected":""}>Masculino</option><option value="F" ${state.sex==="F"?"selected":""}>Feminino</option></select></div>
     <div class="field"><label for="f-cat">Categoria</label><select id="f-cat"><option value="">Todas as categorias</option>${ev.ordemCategorias.map(c=>`<option value="${esc(c)}" ${state.cat===c?"selected":""}>${esc(ev.categorias[c]||c)}</option>`).join("")}</select></div>
    </div>
    ${slice.length?`<div class="table-box"><table>
-    <thead><tr>${res?"<th>Pos</th>":""}<th>Atleta</th><th>Peito</th><th>Percurso</th><th class="hide-sm">Categoria</th>${res?`<th>${ev.geralPor==="liquido"?"Tempo":"Bruto"}</th>${ev.geralPor==="liquido"?"":'<th class="hide-sm">Líquido</th>'}<th class="hide-sm">Ritmo</th>`:""}</tr></thead>
+    <thead><tr>${res?"<th>Pos</th>":""}<th>Atleta</th><th>Peito</th><th>${nomePerc(ev)}</th><th class="hide-sm">Categoria</th>${!res?"":ev.provaDeVoltas?'<th>Voltas</th><th>Distância</th><th class="hide-sm">Tempo</th><th class="hide-sm">Ritmo</th>':`<th>${ev.geralPor==="liquido"?"Tempo":"Bruto"}</th>${ev.geralPor==="liquido"?"":'<th class="hide-sm">Líquido</th>'}<th class="hide-sm">Ritmo</th>`}</tr></thead>
     <tbody>${slice.map(a=>{const ok=a.st==="ok";return`<tr data-bib="${a.d}">
       ${res?`<td class="pos">${ok?a.pos:'<span class="dnf">—</span>'}</td>`:""}
       <td class="ath">${a.x==="F"?'<span class="f">♀ </span>':""}${esc(a.n)}${res&&ok&&a.sp<=(ev.podioGeral||3)?`<span class="badge">${a.sp}º ${a.x}</span>`:""}<small>${a.c?esc(a.c):"&nbsp;"}</small></td>
       <td class="bib">Nº ${a.d}</td>
       <td>${esc(a.p)}</td>
       <td class="hide-sm"><div class="cat">${esc(catNome(ev,a))}</div>${res&&ok&&a.cp?`<div class="catpos">${a.cp}º na categoria</div>`:""}</td>
-      ${res?`<td class="time">${ok?fmtT(tGeral(ev,a)):'<span class="dnf">DESCLASSIFICADO</span>'}</td>${ev.geralPor==="liquido"?"":`<td class="pace hide-sm">${ok?fmtT(a.t):""}</td>`}<td class="pace hide-sm">${ok?fmtP(a.t,kmDe(ev,a.p)):""}</td>`:""}
+      ${!res?"":ev.provaDeVoltas?`<td class="time">${a.v??"—"}</td><td class="time">${fmtKm(a.m)}${ok?"":`<div class="catpos">${statusTxt(a).toLowerCase()}</div>`}</td><td class="pace hide-sm">${a.t?fmtT(a.t):""}</td><td class="pace hide-sm">${a.t&&a.m?fmtP(a.t,a.m/1000):""}</td>`:`<td class="time">${ok?fmtT(tGeral(ev,a)):`<span class="dnf">${statusTxt(a)}</span>`}</td>${ev.geralPor==="liquido"?"":`<td class="pace hide-sm">${ok?fmtT(a.t):""}</td>`}<td class="pace hide-sm">${ok?fmtP(a.t,kmDe(ev,a.p)):""}</td>`}
     </tr>`}).join("")}</tbody></table></div>
-    ${res&&ev.geralPor!=="liquido"?`<p class="count" style="margin:8px 2px 0">Geral pelo tempo bruto (${ev.podioGeral||5} primeiros de cada sexo). Faixas etárias pelo tempo líquido.</p>`:""}
+    ${res&&ev.provaDeVoltas?`<p class="count" style="margin:8px 2px 0">Classificação pela distância percorrida (número de voltas). Em caso de empate, vence quem fez em menos tempo.</p>`:""}
+    ${res&&ev.geralPor!=="liquido"&&!ev.provaDeVoltas?`<p class="count" style="margin:8px 2px 0">Geral pelo tempo bruto (${ev.podioGeral||5} primeiros de cada sexo). Faixas etárias pelo tempo líquido.</p>`:""}
     <div class="pager"><button id="pg-prev" ${state.page<=1?"disabled":""}>← Anterior</button><span>Página ${state.page} de ${pages}</span><button id="pg-next" ${state.page>=pages?"disabled":""}>Próxima →</button></div>`
    :`<div class="empty">${rows.length||state.q||state.dist||state.sex||state.cat?"Nenhum atleta encontrado com esses filtros.":res?"Ainda não há resultados. Veja a lista de largada.":"Nenhum atleta inscrito."}</div>`}`;
   document.getElementById("f-q").oninput=e=>{state.q=e.target.value;state.page=1;renderTable(ev);const el=document.getElementById("f-q");el.focus();el.setSelectionRange(el.value.length,el.value.length)};
@@ -418,7 +451,8 @@ function openSheet(ev,bib){
   const ok=a.st==="ok", km=kmDe(ev,a.p);
   const fin=ev.atletas.filter(x=>x.p===a.p&&x.st==="ok");
   const nSexo=fin.filter(x=>x.x===a.x).length, nCat=fin.filter(x=>x.ca===a.ca).length;
-  const tempo=ok?fmtT(a.t):a.st==="dsq"?"DESCLASSIFICADO":"SEM TEMPO";
+  const tempo=ok?fmtT(a.t):statusTxt(a);
+  if(ev.provaDeVoltas)return openSheetVoltas(ev,a,ok,fin,nSexo,nCat);
   sheet.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-label="Resultado de ${esc(a.n)}">
     <div class="sheet-top"><button class="close" id="sh-x" aria-label="Fechar">×</button>
       <div class="bibbig">PEITO ${a.d}</div><h3>${esc(a.n)}</h3>
@@ -427,6 +461,23 @@ function openSheet(ev,bib){
       ${ok?`<div class="p">${ev.geralPor==="liquido"?"Tempo":"Tempo bruto"}${km?` · ritmo ${fmtP(a.t,km)} · ${kmh(a.t,km)} km/h`:""}</div>
       ${ev.geralPor!=="liquido"&&a.tb!=null?`<div class="sheet-sub"><span>Tempo líquido <b>${fmtT(a.t)}</b></span></div>`:""}`:""}</div>
     ${ok?`<div class="ranks"><div><b>${a.pos}º</b><span>Geral de ${n(fin.length)}</span></div><div><b>${a.sp}º</b><span>${a.x==="F"?"Fem":"Masc"} de ${n(nSexo)}</span></div>${a.cp?`<div><b>${a.cp}º</b><span>Categ. de ${n(nCat)}</span></div>`:"<div><b>—</b><span>Categoria</span></div>"}</div>`:""}
+  </div>`;
+  sheet.hidden=false;
+  const x=document.getElementById("sh-x"); x.focus(); x.onclick=closeSheet;
+}
+function openSheetVoltas(ev,a,ok,fin,nSexo,nCat){
+  let acum=0;
+  const voltas=(a.vt||[]).map((t,i)=>{acum+=t;return`<div class="split"><span>Volta ${i+1}</span><span class="time">${fmtT(t)}${a.mv&&t===a.mv?' <span class="badge">melhor</span>':""}</span><span class="pace">${fmtT(acum)}</span></div>`}).join("");
+  sheet.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-label="Resultado de ${esc(a.n)}">
+    <div class="sheet-top"><button class="close" id="sh-x" aria-label="Fechar">×</button>
+      <div class="bibbig">PEITO ${a.d}</div><h3>${esc(a.n)}</h3>
+      <p>${[a.p,catNome(ev,a),a.c].filter(Boolean).map(esc).join(" · ")}</p></div>
+    <div class="sheet-time"><div class="t">${fmtKm(a.m)}</div>
+      <div class="p">${a.v??0} voltas${a.t?` · ${fmtT(a.t)}`:""}${a.t&&a.m?` · ritmo ${fmtP(a.t,a.m/1000)}`:""}</div>
+      ${ok?"":`<div class="sheet-sub"><span>${statusTxt(a)}</span></div>`}
+      ${a.mv?`<div class="sheet-sub"><span>Melhor volta <b>${fmtT(a.mv)}</b></span></div>`:""}</div>
+    ${ok?`<div class="ranks"><div><b>${a.pos}º</b><span>Geral de ${n(fin.length)}</span></div><div><b>${a.sp}º</b><span>${a.x==="F"?"Fem":"Masc"} de ${n(nSexo)}</span></div>${a.cp?`<div><b>${a.cp}º</b><span>Categ. de ${n(nCat)}</span></div>`:"<div><b>—</b><span>Categoria</span></div>"}</div>`:""}
+    ${voltas?`<div class="splits"><h4>Volta a volta · tempo da volta e acumulado</h4><div style="max-height:260px;overflow-y:auto">${voltas}</div></div>`:""}
   </div>`;
   sheet.hidden=false;
   const x=document.getElementById("sh-x"); x.focus(); x.onclick=closeSheet;
