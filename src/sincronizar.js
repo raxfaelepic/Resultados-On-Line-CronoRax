@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const { Writable } = require('stream');
 const ftp = require('basic-ftp');
+const dns = require('dns').promises;
 const { lerClax } = require('./clax');
 
 const PROFUNDIDADE = Number(process.env.PROFUNDIDADE || 3); // quantos níveis de subpasta olhar
@@ -141,15 +142,28 @@ async function sincronizarFtp(cfg) {
   clienteAtual = cliente;
   const raiz = process.env.FTP_PASTA || '/';
   try {
+    // conversa com o servidor (senha escondida), para diagnóstico
+    const conversa = [];
+    cliente.ftp.log = (msg) => {
+      const linha = String(msg).replace(/(PASS\s+)\S+/i, '$1******').trim();
+      if (linha && conversa.length < 60) conversa.push(linha.slice(0, 300));
+    };
+    cliente.ftp.verbose = true;
+    // por padrão conecta pelo endereço IPv4 (como o FileZilla costuma fazer)
+    let host = process.env.FTP_HOST;
+    if (process.env.FTP_IPV4 !== 'nao') {
+      try { host = (await dns.lookup(process.env.FTP_HOST, { family: 4 })).address; } catch (e) { /* usa o nome mesmo */ }
+    }
+    diagnostico = { conectadoEm: host, conversa };
     await cliente.access({
-      host: process.env.FTP_HOST,
+      host,
       port: Number(process.env.FTP_PORTA || 21),
       user: process.env.FTP_USUARIO,
       password: process.env.FTP_SENHA,
       secure: process.env.FTP_SEGURO === 'sim',
     });
     const arquivos = [];
-    diagnostico = { pastaConfigurada: raiz };
+    diagnostico.pastaConfigurada = raiz;
     try { diagnostico.pastaInicialDoUsuario = await cliente.pwd(); } catch (e) { diagnostico.pastaInicialDoUsuario = `erro: ${e.message}`; }
     // não usar "LIST -a": vários servidores entendem o "-a" como nome de pasta e devolvem lista vazia
     cliente.availableListCommands = cliente.availableListCommands.filter((c) => c !== 'LIST -a');
