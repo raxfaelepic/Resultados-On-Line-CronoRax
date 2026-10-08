@@ -207,6 +207,36 @@ async function sincronizarFtp(cfg) {
   }
 }
 
+// ---------- modo ponte (ponte.php na hospedagem do site, via HTTPS) ----------
+async function sincronizarPonte(cfg) {
+  const url = process.env.PONTE_URL;
+  const cab = { 'X-Chave': process.env.PONTE_CHAVE || '' };
+  diagnostico = { ponte: url };
+  const r = await fetch(`${url}?acao=lista`, { headers: cab, signal: AbortSignal.timeout(60000) });
+  diagnostico.respostaDaLista = r.status;
+  if (r.status === 403) throw new Error('A ponte recusou a chave: confira se PONTE_CHAVE no Railway é igual à $CHAVE do ponte.php');
+  if (!r.ok) throw new Error(`A ponte respondeu ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  const { arquivos = [], pasta } = await r.json();
+  diagnostico.pastaNaHospedagem = pasta;
+  diagnostico.arquivosNaPonte = arquivos.length;
+  const vistos = new Set();
+  for (const f of arquivos) {
+    const caminho = f.caminho;
+    const chave = `${f.tamanho}|${f.modificado}`;
+    vistos.add(caminho);
+    if (deveIgnorar(cfg, caminho)) { eventos.set(caminho, { chave, oculto: 'backup/teste' }); continue; }
+    if (!precisaRecarregar(caminho, chave)) continue;
+    try {
+      const a = await fetch(`${url}?acao=arquivo&caminho=${encodeURIComponent(caminho)}`, { headers: cab, signal: AbortSignal.timeout(120000) });
+      if (!a.ok) throw new Error(`resposta ${a.status}`);
+      processar(caminho, await a.text(), chave, cfg);
+    } catch (e) {
+      console.error(`[clax] erro lendo ${caminho}:`, e.message);
+    }
+  }
+  removerSumidos(vistos);
+}
+
 // ---------- modo pasta local (para testes) ----------
 function listarClaxPasta(base, relativo, nivel, saida) {
   for (const nome of fs.readdirSync(path.join(base, relativo))) {
@@ -249,7 +279,8 @@ async function sincronizar() {
         rejeitar(new Error('Leitura do FTP demorou demais e foi cancelada; tenta de novo na próxima rodada'));
       }, limiteMs);
     });
-    const trabalho = process.env.CLAX_PASTA ? sincronizarPasta(cfg) : sincronizarFtp(cfg);
+    const trabalho = process.env.PONTE_URL ? sincronizarPonte(cfg)
+      : process.env.CLAX_PASTA ? sincronizarPasta(cfg) : sincronizarFtp(cfg);
     try { await Promise.race([trabalho, tempoEsgotado]); } finally { clearTimeout(timer); }
     montarIndice();
     ultimaSincronizacao = new Date().toISOString();
@@ -284,8 +315,8 @@ function status() {
     repetidosAgrupados: todos.filter(([, e]) => !e.oculto).length - publicos.length,
     ultimaSincronizacao,
     ultimoErro,
-    ftp: diagnostico,
-    origem: process.env.CLAX_PASTA ? 'pasta' : 'ftp',
+    conexao: diagnostico,
+    origem: process.env.PONTE_URL ? 'ponte' : process.env.CLAX_PASTA ? 'pasta' : 'ftp',
   };
 }
 
