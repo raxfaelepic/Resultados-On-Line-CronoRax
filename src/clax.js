@@ -82,11 +82,25 @@ function lerClax(xml, { arquivo = '', config = {} } = {}) {
   // categorias: abreviação -> nome
   const categorias = {};
   const ordemCat = [];
+  const faixas = []; // faixas etárias: { abr, sexo, min, max }
   for (const g of (raiz.Categories && raiz.Categories.G) || []) {
     for (const c of g.C || []) {
       if (c.abr && !categorias[c.abr]) { categorias[c.abr] = limpa(c.nom) || c.abr; ordemCat.push(c.abr); }
+      const min = Number(c.agemin), max = Number(c.agemax);
+      if (c.abr && max > 0 && (c.sx === '1' || c.sx === '2')) faixas.push({ abr: c.abr, sexo: c.sx === '1' ? 'M' : 'F', min, max });
     }
   }
+  // categorias do geral: as do Wiclax que tiverem GERAL/GRL no nome; se não houver, cria
+  const geralDe = { M: '', F: '' };
+  for (const abr of ordemCat) {
+    if (!/GRL|GERAL/i.test(`${abr} ${categorias[abr]}`)) continue;
+    const txt = `${abr} ${categorias[abr]}`.toUpperCase();
+    if (!geralDe.F && /(^F|FEM)/.test(txt)) geralDe.F = abr;
+    else if (!geralDe.M && /(^M|MASC)/.test(txt)) geralDe.M = abr;
+  }
+  if (!geralDe.M) { geralDe.M = 'MGRL'; categorias.MGRL = 'Masculino Geral'; ordemCat.unshift('MGRL'); }
+  if (!geralDe.F) { geralDe.F = 'FGRL'; categorias.FGRL = 'Feminino Geral'; ordemCat.unshift('FGRL'); }
+  const ehCatGeral = (abr) => abr && (abr === geralDe.M || abr === geralDe.F);
 
   // inscritos (só campos públicos)
   const atletas = new Map();
@@ -105,6 +119,7 @@ function lerClax(xml, { arquivo = '', config = {} } = {}) {
       t: null,     // tempo líquido (chip), em segundos
       tb: null,    // tempo bruto (desde a largada do percurso)
       st: 'ns',    // ns = sem resultado, ok = concluiu, dsq = desclassificado
+      _ano: Number(e.a) || 0, // ano de nascimento: só para calcular a faixa etária, não vai para a página
     });
   }
 
@@ -122,18 +137,44 @@ function lerClax(xml, { arquivo = '', config = {} } = {}) {
     }
   }
 
-  // classificações por percurso: geral, por sexo e por categoria (pelo tempo líquido)
+  // Classificações por percurso, pela regra da federação:
+  //   geral e por sexo -> tempo bruto (desde a largada do percurso)
+  //   os 5 primeiros de cada sexo vão para a categoria GERAL e saem da faixa etária
+  //   faixa etária     -> tempo líquido (chip)
+  // No eventos.json dá pra mudar: "classificacaoGeral": "liquido" e "podioGeral": 3
+  const geralPorBruto = (config.classificacaoGeral || 'bruto') !== 'liquido';
+  const podioGeral = Number(config.podioGeral || 5);
+  const bruto = (a) => (geralPorBruto && a.tb != null ? a.tb : a.t);
+  const anoProva = Number((dataDoEvento(raiz) || '').slice(0, 4)) || new Date().getFullYear();
+  const faixaEtaria = (a) => {
+    if (!a._ano) return '';
+    const idade = anoProva - a._ano;
+    const f = faixas.find((x) => x.sexo === a.x && idade >= x.min && idade <= x.max);
+    return f ? f.abr : '';
+  };
   const lista = [...atletas.values()];
   for (const { nome } of percursos) {
-    const chegaram = lista.filter((a) => a.p === nome && a.st === 'ok').sort((a, b) => a.t - b.t || a.d - b.d);
-    const porSexo = {}, porCat = {};
-    chegaram.forEach((a, i) => {
+    const chegaram = lista.filter((a) => a.p === nome && a.st === 'ok');
+    const porSexo = {};
+    [...chegaram].sort((a, b) => bruto(a) - bruto(b) || a.t - b.t || a.d - b.d).forEach((a, i) => {
       a.pos = i + 1;
       porSexo[a.x] = (porSexo[a.x] || 0) + 1; a.sp = porSexo[a.x];
-      if (a.ca) { porCat[a.ca] = (porCat[a.ca] || 0) + 1; a.cp = porCat[a.ca]; }
+      if (a.x && a.sp <= podioGeral) a.ca = geralDe[a.x];                // top 5 -> geral
+      else if (!a.ca || ehCatGeral(a.ca)) a.ca = faixaEtaria(a) || a.ca; // volta para a faixa etária
+      if (a.x && a.sp > podioGeral && ehCatGeral(a.ca)) a.ca = '';       // sem ano de nascimento: fica sem categoria
     });
+    const porCat = {};
+    for (const a of chegaram) if (a.ca) (porCat[a.ca] = porCat[a.ca] || []).push(a);
+    for (const [abr, grupo] of Object.entries(porCat)) {
+      const tempo = ehCatGeral(abr) ? bruto : (a) => a.t;
+      grupo.sort((a, b) => tempo(a) - tempo(b) || a.d - b.d).forEach((a, i) => { a.cp = i + 1; });
+    }
   }
-
+  // quem não terminou e está como GERAL no Wiclax volta para a faixa etária
+  for (const a of lista) {
+    if (a.st !== 'ok' && ehCatGeral(a.ca)) a.ca = faixaEtaria(a);
+    delete a._ano;
+  }
   const nome = limpa(raiz.nom) || arquivo.replace(/\.clax$/i, '');
   const data = dataDoEvento(raiz);
   const resumo = {
@@ -146,6 +187,8 @@ function lerClax(xml, { arquivo = '', config = {} } = {}) {
     percursos,
     inscritos: lista.length,
     concluintes: lista.filter((a) => a.st === 'ok').length,
+    geralPor: geralPorBruto ? 'bruto' : 'liquido',
+    podioGeral,
     atualizado: raiz.derSvg || '',
     arquivo,
   };
