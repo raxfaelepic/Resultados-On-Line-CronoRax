@@ -59,11 +59,13 @@ function dataPelaPasta(caminho) {
 
 function processar(caminho, conteudo, chave, cfg) {
   const config = configDoArquivo(cfg, caminho);
-  if (config.ocultar || deveIgnorar(cfg, caminho)) { eventos.set(caminho, { chave, oculto: true }); return; }
+  if (config.ocultar) { eventos.set(caminho, { chave, oculto: 'ocultado no eventos.json' }); return; }
+  if (deveIgnorar(cfg, caminho)) { eventos.set(caminho, { chave, oculto: 'backup/teste' }); return; }
   const { resumo, detalhe } = lerClax(conteudo, { arquivo: path.posix.basename(caminho), config });
   if (!resumo.data) resumo.data = detalhe.data = dataPelaPasta(caminho);
   resumo.pasta = detalhe.pasta = path.posix.dirname(caminho);
-  const oculto = deveIgnorar(cfg, caminho, resumo.nome) || !resumo.inscritos || !resumo.percursos.length;
+  const oculto = deveIgnorar(cfg, caminho, resumo.nome) ? 'backup/teste'
+    : !resumo.inscritos ? 'sem atletas' : !resumo.percursos.length ? 'sem percurso' : false;
   // o detalhe fica guardado já em texto (JSON), que ocupa bem menos memória
   eventos.set(caminho, { chave, resumo, detalhe: oculto ? null : JSON.stringify(detalhe), oculto });
 }
@@ -121,8 +123,10 @@ async function listarClaxFtp(cliente, pasta, nivel, saida) {
   }
 }
 
+let clienteAtual = null;
 async function sincronizarFtp(cfg) {
   const cliente = new ftp.Client(30000);
+  clienteAtual = cliente;
   const raiz = process.env.FTP_PASTA || '/';
   try {
     await cliente.access({
@@ -137,7 +141,7 @@ async function sincronizarFtp(cfg) {
     const vistos = new Set();
     for (const { caminho, chave } of arquivos) {
       vistos.add(caminho);
-      if (deveIgnorar(cfg, caminho)) { eventos.set(caminho, { chave, oculto: true }); continue; }
+      if (deveIgnorar(cfg, caminho)) { eventos.set(caminho, { chave, oculto: 'backup/teste' }); continue; }
       if (!precisaRecarregar(caminho, chave)) continue;
       const pedacos = [];
       const destino = new Writable({ write(c, _e, cb) { pedacos.push(c); cb(); } });
@@ -171,7 +175,7 @@ async function sincronizarPasta(cfg) {
   const vistos = new Set();
   for (const { caminho, chave } of arquivos) {
     vistos.add(caminho);
-    if (deveIgnorar(cfg, caminho)) { eventos.set(caminho, { chave, oculto: true }); continue; }
+    if (deveIgnorar(cfg, caminho)) { eventos.set(caminho, { chave, oculto: 'backup/teste' }); continue; }
     if (!precisaRecarregar(caminho, chave)) continue;
     try {
       processar(caminho, fs.readFileSync(path.join(base, caminho), 'utf8'), chave, cfg);
@@ -187,13 +191,23 @@ async function sincronizar() {
   rodando = true;
   const cfg = lerConfig();
   try {
-    if (process.env.CLAX_PASTA) await sincronizarPasta(cfg);
-    else await sincronizarFtp(cfg);
+    // se uma leitura travar (FTP sem responder), desiste depois de alguns minutos
+    const limiteMs = Number(process.env.TEMPO_MAXIMO_SEGUNDOS || 300) * 1000;
+    let timer;
+    const tempoEsgotado = new Promise((_, rejeitar) => {
+      timer = setTimeout(() => {
+        try { if (clienteAtual) clienteAtual.close(); } catch (e) { /* ignora */ }
+        rejeitar(new Error('Leitura do FTP demorou demais e foi cancelada; tenta de novo na próxima rodada'));
+      }, limiteMs);
+    });
+    const trabalho = process.env.CLAX_PASTA ? sincronizarPasta(cfg) : sincronizarFtp(cfg);
+    try { await Promise.race([trabalho, tempoEsgotado]); } finally { clearTimeout(timer); }
     montarIndice();
     ultimaSincronizacao = new Date().toISOString();
     ultimoErro = null;
   } catch (e) {
-    ultimoErro = e.message;
+    ultimoErro = `${new Date().toISOString()} ${e.message}`;
+    montarIndice(); // mantém no ar o que já foi lido
     console.error('[sincronizar] falhou:', e.message);
   } finally {
     rodando = false;
@@ -217,7 +231,8 @@ function status() {
   return {
     eventosNaPagina: publicos.length,
     arquivosLidos: todos.length,
-    arquivosOcultos: todos.filter(([, e]) => e.oculto).map(([c]) => c),
+    arquivosOcultos: Object.fromEntries(todos.filter(([, e]) => e.oculto).map(([c, e]) => [c, e.oculto])),
+    repetidosAgrupados: todos.filter(([, e]) => !e.oculto).length - publicos.length,
     ultimaSincronizacao,
     ultimoErro,
     origem: process.env.CLAX_PASTA ? 'pasta' : 'ftp',

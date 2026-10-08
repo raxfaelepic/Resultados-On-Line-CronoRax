@@ -53,15 +53,31 @@ function lerClax(xml, { arquivo = '', config = {} } = {}) {
   const raiz = parser.parse(xml).Epreuve;
   if (!raiz) throw new Error('Arquivo não parece um .clax do Wiclax (sem <Epreuve>)');
 
-  const etapa = (raiz.Etapes && raiz.Etapes.Etape && raiz.Etapes.Etape[0]) || {};
+  // etapa ativa; se ela não tiver inscritos, usa a primeira que tiver
+  const etapas = (raiz.Etapes && raiz.Etapes.Etape) || [];
+  const temInscritos = (et) => et && et.Engages && et.Engages.E && et.Engages.E.length;
+  let etapa = etapas[Number(raiz.etapeActive || 1) - 1];
+  if (!temInscritos(etapa)) etapa = etapas.find(temInscritos) || etapas[0] || {};
+  if (!temInscritos(etapa) && raiz.Engages) etapa = { ...etapa, Engages: raiz.Engages, Resultats: etapa.Resultats || raiz.Resultats };
   const ocultarPercursos = new Set((config.ocultarPercursos || []).map((p) => p.toUpperCase()));
 
-  // percursos na ordem do Wiclax
-  const percursos = ((raiz.Parcours && raiz.Parcours.Pcs) || [])
-    .map((p) => limpa(p.nom))
-    .filter((nome) => nome && !ocultarPercursos.has(nome.toUpperCase()))
-    .map((nome) => ({ nome, km: (config.km && config.km[nome]) || kmDoNome(nome) }));
-  const percursoValido = new Set(percursos.map((p) => p.nome));
+  // percursos: lista do Wiclax; se vier vazia ou incompleta, completa com os percursos dos próprios atletas
+  const nomesPercurso = [];
+  const jaTem = new Set();
+  const addPercurso = (n) => {
+    const nome = limpa(n);
+    if (!nome || jaTem.has(nome.toUpperCase()) || ocultarPercursos.has(nome.toUpperCase())) return;
+    jaTem.add(nome.toUpperCase()); nomesPercurso.push(nome);
+  };
+  ((raiz.Parcours && raiz.Parcours.Pcs) || []).forEach((p) => addPercurso(p.nom));
+  const extras = [];
+  for (const e of (etapa.Engages && etapa.Engages.E) || []) {
+    const n = limpa(e.p);
+    if (n && !jaTem.has(n.toUpperCase()) && !extras.includes(n)) extras.push(n);
+  }
+  extras.sort((a, b) => (kmDoNome(a) || 999) - (kmDoNome(b) || 999) || a.localeCompare(b)).forEach(addPercurso);
+  const percursos = nomesPercurso.map((nome) => ({ nome, km: (config.km && config.km[nome]) || kmDoNome(nome) }));
+  const percursoPorChave = new Map(percursos.map((p) => [p.nome.toUpperCase(), p.nome]));
 
   // categorias: abreviação -> nome
   const categorias = {};
@@ -76,9 +92,9 @@ function lerClax(xml, { arquivo = '', config = {} } = {}) {
   const atletas = new Map();
   for (const e of (etapa.Engages && etapa.Engages.E) || []) {
     const nome = limpa(e.n);
-    const percurso = limpa(e.p);
+    const percurso = percursoPorChave.get(limpa(e.p).toUpperCase());
     if (!e.d || !nome || nome.startsWith('*****')) continue;   // "ATLETA DESCONHECIDO"
-    if (!percursoValido.has(percurso)) continue;               // sem percurso ou percurso oculto
+    if (!percurso) continue;                                   // sem percurso ou percurso oculto
     atletas.set(String(e.d), {
       d: Number(e.d),
       n: nome,
