@@ -28,7 +28,7 @@ app.get('/api/eventos/:slug', (req, res) => {
   res.type('json').send(ev);
 });
 
-app.get('/api/status', (_req, res) => res.json(status()));
+app.get('/api/status', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json(status()); });
 
 app.get('*', (_req, res) => res.type('html').send(html));
 
