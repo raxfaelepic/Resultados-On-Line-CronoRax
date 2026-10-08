@@ -1,6 +1,6 @@
 {
   "padrao": {
-    "ocultarPercursos": ["EM ANALISE"]
+    "ocultarPercursos": ["EM ANALISE", "ANALISE"]
   },
   "eventos": {
     "LIVE__RUN_XP__-_S_O_PAULO.clax": {
