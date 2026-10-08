@@ -86,8 +86,16 @@ function lerClax(xml, { arquivo = '', config = {} } = {}) {
   for (const g of (raiz.Categories && raiz.Categories.G) || []) {
     for (const c of g.C || []) {
       if (c.abr && !categorias[c.abr]) { categorias[c.abr] = limpa(c.nom) || c.abr; ordemCat.push(c.abr); }
-      const min = Number(c.agemin), max = Number(c.agemax);
-      if (c.abr && max > 0 && (c.sx === '1' || c.sx === '2')) faixas.push({ abr: c.abr, sexo: c.sx === '1' ? 'M' : 'F', min, max });
+      if (!c.abr) continue;
+      const sx = String(c.sx || '').toUpperCase();
+      const sexo = sx === '1' || sx === 'M' ? 'M' : sx === '2' || sx === 'F' ? 'F' : ''; // '' = vale para os dois
+      const min = Number(c.agemin) || 0, max = Number(c.agemax) || 0;
+      if (max > 0) faixas.push({ abr: c.abr, sexo, min, max });
+      else if (c.datemin || c.datemax) {
+        // faixa definida por data de nascimento (dias no formato do Excel)
+        const ano = (v) => (v ? new Date(Date.UTC(1899, 11, 30) + Math.floor(parseFloat(String(v).replace(',', '.'))) * 86400000).getUTCFullYear() : null);
+        faixas.push({ abr: c.abr, sexo, anoMin: ano(c.datemin) || 0, anoMax: ano(c.datemax) || 9999 });
+      }
     }
   }
   // categorias do geral: as do Wiclax que tiverem GERAL/GRL no nome; se não houver, cria
@@ -119,7 +127,7 @@ function lerClax(xml, { arquivo = '', config = {} } = {}) {
       t: null,     // tempo líquido (chip), em segundos
       tb: null,    // tempo bruto (desde a largada do percurso)
       st: 'ns',    // ns = sem resultado, ok = concluiu, dsq = desclassificado
-      _ano: Number(e.a) || 0, // ano de nascimento: só para calcular a faixa etária, não vai para a página
+      _ano: Number(String(e.a || '').slice(0, 4)) || 0, // ano de nascimento: só para calcular a faixa etária, não vai para a página
     });
   }
 
@@ -149,7 +157,8 @@ function lerClax(xml, { arquivo = '', config = {} } = {}) {
   const faixaEtaria = (a) => {
     if (!a._ano) return '';
     const idade = anoProva - a._ano;
-    const f = faixas.find((x) => x.sexo === a.x && idade >= x.min && idade <= x.max);
+    const f = faixas.find((x) => (!x.sexo || x.sexo === a.x) && !ehCatGeral(x.abr) &&
+      (x.max ? idade >= x.min && idade <= x.max : a._ano >= x.anoMin && a._ano <= x.anoMax));
     return f ? f.abr : '';
   };
   const lista = [...atletas.values()];
@@ -198,7 +207,11 @@ function lerClax(xml, { arquivo = '', config = {} } = {}) {
     detalhe: {
       ...resumo,
       categorias,
-      ordemCategorias: ordemCat.filter((c) => lista.some((a) => a.ca === c)),
+      // categorias usadas pelos atletas: primeiro as da lista do Wiclax, depois qualquer outra que apareça
+      ordemCategorias: [
+        ...ordemCat.filter((c) => lista.some((a) => a.ca === c)),
+        ...[...new Set(lista.map((a) => a.ca))].filter((c) => c && !ordemCat.includes(c)).sort(),
+      ],
       atletas: lista,
     },
   };

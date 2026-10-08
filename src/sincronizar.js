@@ -109,11 +109,19 @@ function removerSumidos(vistos) {
 }
 
 // ---------- modo FTP ----------
+let diagnostico = {};
 async function listarClaxFtp(cliente, pasta, nivel, saida) {
   let itens;
   try { itens = await cliente.list(pasta); } catch (e) {
     console.error(`[ftp] não consegui abrir ${pasta}:`, e.message);
+    if (nivel === 0) throw new Error(`Não consegui abrir a pasta "${pasta}" no FTP: ${e.message}`);
+    diagnostico.errosEmSubpastas = (diagnostico.errosEmSubpastas || 0) + 1;
     return;
+  }
+  diagnostico.pastasVisitadas = (diagnostico.pastasVisitadas || 0) + 1;
+  if (nivel === 0) {
+    diagnostico.conteudoDaPasta = itens.slice(0, 40).map((f) => (f.isDirectory ? `[pasta] ${f.name}` : f.name));
+    if (itens.length > 40) diagnostico.conteudoDaPasta.push(`... e mais ${itens.length - 40} itens`);
   }
   for (const f of itens) {
     if (f.name === '.' || f.name === '..') continue;
@@ -137,6 +145,8 @@ async function sincronizarFtp(cfg) {
       secure: process.env.FTP_SEGURO === 'sim',
     });
     const arquivos = [];
+    diagnostico = { pastaConfigurada: raiz };
+    try { diagnostico.pastaInicialDoUsuario = await cliente.pwd(); } catch (e) { /* ignora */ }
     await listarClaxFtp(cliente, raiz, 0, arquivos);
     const vistos = new Set();
     for (const { caminho, chave } of arquivos) {
@@ -235,6 +245,7 @@ function status() {
     repetidosAgrupados: todos.filter(([, e]) => !e.oculto).length - publicos.length,
     ultimaSincronizacao,
     ultimoErro,
+    ftp: diagnostico,
     origem: process.env.CLAX_PASTA ? 'pasta' : 'ftp',
   };
 }
