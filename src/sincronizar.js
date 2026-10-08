@@ -58,12 +58,18 @@ function dataPelaPasta(caminho) {
   return i < 0 ? '' : `${m[1]}-${String(i + 1).padStart(2, '0')}-01`;
 }
 
-function processar(caminho, conteudo, chave, cfg) {
+function dataLocal(d) {
+  if (!d || isNaN(d)) return '';
+  return d.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+}
+
+function processar(caminho, conteudo, chave, cfg, dataArquivo) {
   const config = configDoArquivo(cfg, caminho);
   if (config.ocultar) { eventos.set(caminho, { chave, oculto: 'ocultado no eventos.json' }); return; }
   if (deveIgnorar(cfg, caminho)) { eventos.set(caminho, { chave, oculto: 'backup/teste' }); return; }
   const { resumo, detalhe } = lerClax(conteudo, { arquivo: path.posix.basename(caminho), config });
-  if (!resumo.data) resumo.data = detalhe.data = dataPelaPasta(caminho);
+  // sem data no .clax: usa a pasta (/2026/out) ou, por último, a data em que o arquivo foi salvo
+  if (!resumo.data) resumo.data = detalhe.data = dataPelaPasta(caminho) || dataLocal(dataArquivo);
   resumo.pasta = detalhe.pasta = path.posix.dirname(caminho);
   const oculto = deveIgnorar(cfg, caminho, resumo.nome) ? 'backup/teste'
     : !resumo.inscritos ? 'sem atletas' : !resumo.percursos.length ? 'sem percurso' : false;
@@ -229,7 +235,7 @@ async function sincronizarPonte(cfg) {
     try {
       const a = await fetch(`${url}?acao=arquivo&caminho=${encodeURIComponent(caminho)}`, { headers: cab, signal: AbortSignal.timeout(120000) });
       if (!a.ok) throw new Error(`resposta ${a.status}`);
-      processar(caminho, await a.text(), chave, cfg);
+      processar(caminho, await a.text(), chave, cfg, new Date(Number(f.modificado) * 1000));
     } catch (e) {
       console.error(`[clax] erro lendo ${caminho}:`, e.message);
     }
@@ -257,7 +263,7 @@ async function sincronizarPasta(cfg) {
     if (deveIgnorar(cfg, caminho)) { eventos.set(caminho, { chave, oculto: 'backup/teste' }); continue; }
     if (!precisaRecarregar(caminho, chave)) continue;
     try {
-      processar(caminho, fs.readFileSync(path.join(base, caminho), 'utf8'), chave, cfg);
+      processar(caminho, fs.readFileSync(path.join(base, caminho), 'utf8'), chave, cfg, fs.statSync(path.join(base, caminho)).mtime);
     } catch (e) {
       console.error(`[clax] erro lendo ${caminho}:`, e.message);
     }
